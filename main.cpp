@@ -15,6 +15,8 @@ class Input
 public:
 	static std::unordered_map<SDL_Scancode, bool> keysPressed;
 	static std::unordered_map<SDL_Scancode, bool> keysDown;
+	static int mouseX;
+	static int mouseY;
 	static bool IsKeyPressed(SDL_Scancode key)
 	{
 		return keysPressed.find(key) != keysPressed.end() && keysPressed.find(key)->second;
@@ -23,6 +25,12 @@ public:
 	{
 		return keysDown.find(key) != keysDown.end() && keysDown.find(key)->second;
 	}
+
+
+		static int GetMousePosX()
+		{
+			return 0;
+		}
 };
 std::unordered_map<SDL_Scancode, bool> Input::keysPressed;
 std::unordered_map<SDL_Scancode, bool> Input::keysDown;
@@ -42,12 +50,13 @@ public:
 
 
 
-	static void Draw(SDL_Renderer* renderer, SDL_Texture* texture, int x, int y, SDL_FRect* srcRect = nullptr)
+	static void Draw(SDL_Renderer* renderer, SDL_Texture* texture, int x, int y, double angle = 0.0, const SDL_FPoint* center = nullptr, SDL_FRect* srcRect = nullptr, SDL_FRect* dstRect = nullptr, SDL_FlipMode flipMode = SDL_FLIP_NONE)
 	{
 		float textureWidth, textureHeight;
 		SDL_GetTextureSize(texture, &textureWidth, &textureHeight);
-		SDL_FRect dst = { (float)floor(x), (float)floor(y), srcRect ? srcRect->w : (float)textureWidth, srcRect ? srcRect->h : (float)textureHeight };
-		SDL_RenderTexture(renderer, texture, srcRect, &dst);
+		//SDL_FRect dst = { (float)floor(x), (float)floor(y), srcRect ? srcRect->w : (float)textureWidth, srcRect ? srcRect->h : (float)textureHeight };
+		//SDL_RenderTexture(renderer, texture, srcRect, &dst);
+		SDL_RenderTextureRotated(renderer, texture, srcRect, dstRect, angle, center, flipMode);
 	}
 };
 
@@ -142,14 +151,31 @@ public:
 		{
 			SDL_Texture* texture;
 			int z = 0;
+		};	
+		struct Rotatable
+		{
+			double angle = 0.0;
+			SDL_FPoint* center = nullptr;
 		};
 		struct Collider
 		{
 			SDL_FRect rect;
-			bool colliding = false;
+			double offsetX = 0;
+			double offsetY = 0;
 			bool isStatic = false;
+			bool colliding = false;
 		};
-
+		struct Physics
+		{
+			double accelerationX;
+			double accelerationY;
+			double terminalVelocity = 512;
+			float bounce = 0.0f;
+			bool onFloor = false;
+			bool floating = false;
+			double gravity = 1960.0;
+			double friction = 0.8;
+		};
 		// never use this (for now)
 		struct ColliderCircle
 		{
@@ -166,7 +192,27 @@ public:
 			float speed = 1.0f;
 			int row = 0;
 			int maxFrames = 1;
+			int totalRows = 1;
 			
+		};
+
+		struct Parallax
+		{
+			float x = 1.0f;
+			float y = 1.0f;;
+		};
+
+		struct Button
+		{
+			SDL_Rect* rect;
+			bool pressed;
+			bool down;
+			bool hovering;
+		};
+		struct Audio
+		{
+			SDL_AudioStream* stream;
+			bool looped = false;
 		};
 	};
 	class System
@@ -186,7 +232,7 @@ public:
 				}
 			}
 		}
-		static void Draw(SDL_Renderer* renderer, std::unordered_map<int, Component::Sprite>& sprites, std::unordered_map<int, Component::Animation>& animations, std::unordered_map<int, Component::Position>& positions, int camX = 0, int camY = 0, int camW = 0, int camH = 0)
+		static void Draw(SDL_Renderer* renderer, std::unordered_map<int, Component::Sprite>& sprites, std::unordered_map<int, Component::Animation>& animations, std::unordered_map<int, Component::Parallax>& parallaxes, std::unordered_map<int, Component::Rotatable>& rotatables ,std::unordered_map<int, Component::Position>& positions, int camX = 0, int camY = 0, int camW = 0, int camH = 0)
 		{
 			std::vector<std::pair<int, Component::Sprite>> sortedSprites;
 			for (auto& i : sprites)
@@ -200,156 +246,397 @@ public:
 			
 			for (auto& sprite : sortedSprites)
 			{
-				int x = positions[sprite.first].x;
-				int y = positions[sprite.first].y;
+				int entity = sprite.first;
+				int x = positions[entity].x;
+				int y = positions[entity].y;
 				float w;
 				float h;
 				SDL_GetTextureSize(sprite.second.texture, &w, &h);
+				
+				float parallaxX = 1.0f;
+				float parallaxY = 1.0f;
+
+
+				if (parallaxes.find(entity) != parallaxes.end())
+				{
+					auto& parallax = parallaxes[entity];
+					parallaxX = parallax.x;
+					parallaxY = parallax.y;
+				}
+
+
+				float frameWidth = w;
+				float frameHeight = h;
+				auto animation = animations.find(entity);
+				SDL_FRect srcRect;
+				SDL_FRect dstRect;
+				if (animation != animations.end())
+				{
+					auto& anim = animation->second;
+
+					frameWidth = w / anim.maxFrames;
+					frameHeight = h / anim.totalRows;
+
+					srcRect.x = frameWidth * anim.frame;
+					srcRect.y = frameHeight * anim.row;
+					srcRect.w = frameWidth;
+					srcRect.h = frameHeight;
+
+					dstRect.x = (float)floor(x- camX * parallaxX);
+					dstRect.y = (float)floor(y- camY * parallaxY);
+					dstRect.w = srcRect.w;
+					dstRect.h = srcRect.h;
+				}
+
+				else
+				{
+					srcRect.x = 0;
+					srcRect.y = 0;
+					srcRect.w = w;
+					srcRect.h = h;
+
+
+					dstRect.x = (float)floor(x - camX * parallaxX);
+					dstRect.y = (float)floor(y - camY * parallaxY);
+					dstRect.w = w;
+					dstRect.h = h;
+				}
+
+
 				if (
-					(x + w < camX) ||
-					(y + h < camY) ||
-					(x > camX + camW) ||
-					(y > camY + camH)
+					(dstRect.x + dstRect.w < 0) ||
+					(dstRect.y + dstRect.h < 0) ||
+					(dstRect.x > camW) ||
+					(dstRect.y > camH)
 					)
 				{
 					continue;
 				}
 
-				auto animation = animations.find(sprite.first);
-				SDL_FRect srcRect;
-				if (animation != animations.end())
+
+
+
+				auto rotatable = rotatables.find(entity);
+				double angel = 0.0;
+				SDL_FPoint* point = nullptr;
+				if (rotatable != rotatables.end())
 				{
-					auto& anim = animation->second;
-
-					float frameWidth = w / anim.maxFrames;
-					float frameHeight = h / 8;
-
-					srcRect = { frameWidth * anim.frame,frameHeight * anim.row, frameWidth, frameHeight };
-				
+					auto& rotate = rotatable->second;
+					angel = rotate.angle;
+					point = rotate.center;
 				}
 
-				else
-				{
-					srcRect = { 0, 0, w, h };
-				}
-				TextureManager::Draw(renderer, sprite.second.texture, positions[sprite.first].x - camX, positions[sprite.first].y - camY, &srcRect);
+				TextureManager::Draw(renderer, sprite.second.texture,0, 0, angel, point ,&srcRect, &dstRect);
 				
 			}
 		}
 
 
-		static void Fall(std::unordered_map<int, Component::Velocity> )
+		static void UpdatePhysics(std::unordered_map<int, Component::Physics>& physics, std::unordered_map<int, Component::Velocity>& velocities, double elapsed)
 		{
+			for (auto& i : physics)
+			{
+				int entity = i.first;
+				auto& physic = i.second;
+				
+				if (velocities.find(entity) != velocities.end())
+				{
+					auto& velocity = velocities.find(entity)->second;
+					if (!physic.floating && !physic.onFloor)
+					{
+						velocity.y += physic.gravity * elapsed;
+					}
 
+					velocity.x += physic.accelerationX * elapsed;
+					velocity.y += physic.accelerationY * elapsed;
+
+					if (physic.onFloor)
+					{
+						velocity.x *= physic.friction;
+					}
+					
+
+					if (velocity.y > physic.terminalVelocity) { velocity.y = physic.terminalVelocity; }
+					if (velocity.y < -physic.terminalVelocity) { velocity.y = -physic.terminalVelocity; }
+
+					physic.accelerationX = 0;
+					physic.accelerationY = 0;
+
+				}
+			}
 		}
 
 		static void UpdateAnimationFrames(std::unordered_map<int, Component::Animation>& animations, double elapsed)
 		{
 			for (auto& i : animations)
 			{
-				i.second.elapsed += elapsed * 1000.0 * i.second.speed;
-				if (i.second.elapsed >= i.second.frameTime)
+				auto& anim = i.second;
+				anim.elapsed += elapsed * 1000.0f * anim.speed;
+				if (anim.elapsed >= anim.frameTime)
 				{
-					i.second.elapsed -= i.second.frameTime;
-					i.second.frame++;
-					if (i.second.looped)
+					anim.elapsed -= anim.frameTime;
+					anim.frame++;
+					if (anim.looped)
 					{
-						i.second.frame %= i.second.maxFrames;
+						anim.frame %= anim.maxFrames;
 					}
 					else
 					{
-						i.second.frame = std::min(i.second.frame, i.second.maxFrames - 1);
+						anim.frame = std::min(anim.frame, anim.maxFrames - 1);
 					}
 				}
 			}
 		}
-
+		static void SyncColliders(std::unordered_map<int, Component::Collider>& colliders, std::unordered_map<int, Component::Position>& positions)
+		{
+			for (auto& i : colliders)
+			{
+				int entity = i.first;
+				if (positions.find(entity) != positions.end())
+				{
+					auto& pos = positions[entity];
+					auto& collider = colliders[entity];
+					collider.rect.x = pos.x + collider.offsetX;
+					collider.rect.y = pos.y + collider.offsetY;
+				}
+			}
+		}
 		static void PlayAnimation(std::string state)
 		{
 
 		}
 
-		static void Collide(std::unordered_map<int, Component::Collider>& colliders)
+		static void Collide(std::unordered_map<int, Component::Collider>& colliders,
+							std::unordered_map<int, Component::Position>& positions,
+							std::unordered_map<int, Component::Velocity>& velocities,
+							std::unordered_map<int, Component::Physics>& physics)
 		{
+
+
+			for (auto& kv : physics)
+			{
+				kv.second.onFloor = false;
+			}
+
+			SyncColliders(colliders, positions);
+
+
 			for (auto i = colliders.begin(); i != colliders.end(); ++i)
 			{
-				if (!i->second.isStatic)
+				int entityA = i->first;
+				auto& a = i->second;
+
 				for (auto j = std::next(i); j != colliders.end(); ++j)
 				{
-					float dlx = (i->second.rect.x + i->second.rect.w) - j->second.rect.x;
-					float drx = (j->second.rect.x + j->second.rect.w) - i->second.rect.x;
+					int entityB = j->first;
+					auto& b = j->second;
+
+
+					SDL_FRect A = a.rect;
+					SDL_FRect B = b.rect;
+
+
+					if (!SDL_HasRectIntersectionFloat(&A, &B)) { continue; }
+
+					float dlx = (A.x + A.w) - B.x;
+					float drx = (B.x + B.w) - A.x;
 					float overlapX = std::min(dlx, drx);
 
-					float duy = (i->second.rect.y + i->second.rect.h) - j->second.rect.y;
-					float ddy = (j->second.rect.y + j->second.rect.h) - i->second.rect.y;
+					float duy = (A.y + A.h) - B.y;
+					float ddy = (B.y + B.h) - A.y;
 					float overlapY = std::min(duy, ddy);
 
+					bool resolveX = overlapX < overlapY;
+
+					auto moveEntity = [&](int id, float dx, float dy)
+						{
+
+							//auto cIt = colliders.find(id);
+							auto pIt = positions.find(id);
+							//if (cIt != colliders.end() && !cIt->second.isStatic)
+							//{
+								//cIt->second.rect.x += dx;
+								//cIt->second.rect.y += dy;
+								if (pIt != positions.end())
+								{
+									pIt->second.x += dx;
+									pIt->second.y += dy;
+								}
+							//}
+						};
+					auto zeroVelAxis = [&](int id, bool xAxis, float bounce = 0.0f)
+						{
+							auto v = velocities.find(id);
+							if (v == velocities.end()) return;
+							if (xAxis) { v->second.x *= -bounce; }
+							else { v->second.y *= -bounce; }
+						};
+
+					auto getPhys = [&](int id) -> Component::Physics*
+						{
+							auto p = physics.find(id);
+							if (p == physics.end()) { return nullptr; }
+							return &p->second;
+						};
 
 
-					if (overlapX < overlapY)
+					if (resolveX)
 					{
-						if (!i->second.isStatic && j->second.isStatic)
+						float push = (A.x < B.x ? -overlapX : overlapX);
+
+						if (!a.isStatic && b.isStatic)
 						{
-							i->second.rect.x += (i->second.rect.x < j->second.rect.x ? -overlapX : overlapX);
+							moveEntity(entityA, push, 0);
+							zeroVelAxis(entityA, true, getPhys(entityA) ? getPhys(entityA)->bounce : 0.0f);
 						}
-						else if (i->second.isStatic && !j->second.isStatic)
+						else if (a.isStatic && !b.isStatic)
 						{
-							j->second.rect.x += (j->second.rect.x < i->second.rect.x ? -overlapX : overlapX);
+							moveEntity(entityB, -push, 0);
+							zeroVelAxis(entityB, true, getPhys(entityB) ? getPhys(entityB)->bounce : 0.0f);
 						}
-						else if (!i->second.isStatic && !j->second.isStatic)
+						else if (!a.isStatic && !b.isStatic)
 						{
-							if (i->second.rect.x < j->second.rect.x)
-							{
-								i->second.rect.x -= overlapX / 2;
-								j->second.rect.x += overlapX / 2;
-							}
-							else
-							{
-								i->second.rect.x += overlapX / 2;
-								j->second.rect.x -= overlapX / 2;
-							}
+							moveEntity(entityA, push * 0.5f, 0);
+							moveEntity(entityB, -push * 0.5f, 0);
+							zeroVelAxis(entityA, false, getPhys(entityA) ? getPhys(entityA)->bounce : 0.0f);
+							zeroVelAxis(entityB, false, getPhys(entityB) ? getPhys(entityB)->bounce : 0.0f);
 						}
 					}
 					else
 					{
-						if (!i->second.isStatic && j->second.isStatic)
+						float push = (A.y < B.y ? -overlapY : overlapY);
+
+						if (!a.isStatic && b.isStatic)
 						{
-							i->second.rect.y += (i->second.rect.y < j->second.rect.y ? -overlapY : overlapY);
-						}
-						else if (i->second.isStatic && !j->second.isStatic)
-						{
-							j->second.rect.y += (j->second.rect.y < i->second.rect.y ? -overlapY : overlapY);
-						}
-						else if (!i->second.isStatic && !j->second.isStatic)
-						{
-							if (i->second.rect.y < j->second.rect.y)
-							{
-								i->second.rect.y -= overlapY / 2;
-								j->second.rect.y += overlapY / 2;
+							moveEntity(entityA, 0, push);
+							zeroVelAxis(entityA, true, getPhys(entityA) ? getPhys(entityA)->bounce : 0.0f);
+
+
+							if (A.y < B.y) 
+							{ 
+								if (getPhys(entityA)) 
+								{
+									getPhys(entityA)->onFloor = true; 
+								} 
+								positions[entityA].y = B.y - A.h;
 							}
-							else
-							{
-								i->second.rect.y += overlapY / 2;
-								j->second.rect.y -= overlapY / 2;
-							}
+						}
+						else if (a.isStatic && !b.isStatic)
+						{
+							moveEntity(entityB, 0, -push);
+							zeroVelAxis(entityB, false, getPhys(entityB) ? getPhys(entityB)->bounce : 0.0f);
+
+							if (B.y < A.y) { if (getPhys(entityB)) { getPhys(entityB)->onFloor = true; } }
+						}
+						else if (!a.isStatic && !b.isStatic)
+						{
+							moveEntity(entityA, 0, push * 0.5f);
+							moveEntity(entityB, 0, -push * 0.5f);
+							zeroVelAxis(entityA, false, getPhys(entityA) ? getPhys(entityA)->bounce : 0.0f);
+							zeroVelAxis(entityB, false, getPhys(entityB) ? getPhys(entityB)->bounce : 0.0f);
+
+							if (A.y < B.y) { if (getPhys(entityA)) { getPhys(entityA)->onFloor = true; } }
+							else { if (getPhys(entityB)) { getPhys(entityB)->onFloor = true; } }
 						}
 					}
 
-					if (SDL_HasRectIntersectionFloat(&i->second.rect, &j->second.rect))
-					{
-						i->second.colliding = true;
-						j->second.colliding = true;
-					}
-					else
-					{
-						i->second.colliding = false;
-						j->second.colliding = false;
-					}
+					a.colliding = true;
+					b.colliding = true;
+
+					
+					if (A.y < B.y) { if (getPhys(entityA)) { getPhys(entityA)->onFloor = true; } }
 				}
 				
 			}
+		
+
+
 			
+
+
+
+			SyncColliders(colliders, positions);
+
 		}
+
+		static SDL_FRect CreateCollidersFromTexture(SDL_Texture* texture, double x, double y)
+		{
+			float w;
+			float h;
+			SDL_GetTextureSize(texture, &w, &h);
+			SDL_FRect rect;
+			rect.x = x;
+			rect.y = y;
+			rect.w = w;
+			rect.h = h;
+			return rect;	
+		}
+
+		static SDL_Texture* MakeRectangleTexture(SDL_Renderer* renderer, int w, int h, Uint8 r, Uint8 g, Uint8 b, Uint8 a = 255)
+		{
+			SDL_Texture* texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_TARGET, w, h);
+			SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+			SDL_SetRenderTarget(renderer, texture);
+			SDL_SetRenderDrawColor(renderer, r, g, b, a);
+			SDL_RenderClear(renderer);
+			SDL_SetRenderTarget(renderer, nullptr);
+			return texture;
+		}
+
+		static void DrawColliders(SDL_Renderer* renderer, const std::unordered_map<int, Component::Collider>& colliders, int camX, int camY)
+		{
+			SDL_SetRenderDrawColor(renderer, 255, 0, 0, 128U);
+			//SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+			for (auto& i : colliders)
+			{
+				int entity = i.first;
+				
+				if (colliders.find(entity) != colliders.end())
+				{
+					SDL_FRect rect = i.second.rect;
+					rect.x -= camX;
+					rect.y -= camY;
+					SDL_RenderRect(renderer, &rect);
+				}
+			}
+		}
+
+
+		static void UpdateButton(std::unordered_map<int, Component::Button> buttons)
+		{
+			for (auto& i : buttons)
+			{
+				int entity = i.first;
+				auto& button = i.second;
+				button.pressed = false;
+
+				
+				float mouseX;
+				float mouseY;
+				SDL_GetMouseState(&mouseX, &mouseY);
+				SDL_Rect* rect;
+				rect->x = mouseX;
+				rect->y = mouseY;
+				rect->w = 1;
+				rect->h = 1;
+				
+				if (SDL_HasRectIntersection(rect, button.rect))
+				{
+					button.hovering = true;
+					if (false)
+					{
+
+					}
+					
+				}
+				else
+				{
+					button.hovering = false;
+				}
+			}
+		}
+
+
 	};
 	class Entity
 	{
@@ -362,8 +649,9 @@ public:
 		static std::unordered_map<int, Component::Sprite> sprites;
 		static std::unordered_map<int, Component::Collider> colliders;
 		static std::unordered_map<int, Component::Animation> animations;
-		
-	
+		static std::unordered_map<int, Component::Physics> physics;
+		static std::unordered_map<int, Component::Rotatable> rotatables;
+		static std::unordered_map<int, Component::Parallax> parallaxes;
 		template<typename T>
 		static void AddComponent(int entity, T component, std::unordered_map<int, T>& componentMap)
 		{
@@ -404,8 +692,9 @@ public:
 		int world = Entity::CreateEntity();
 
 		
-
+		std::vector<int> clouds;
 		std::vector<int> trees;
+		std::unordered_map<int, Component::Rotatable*> tree_rotations;
 		Window* window;
 
 		ECS::Component::Position* camera_position;
@@ -413,34 +702,76 @@ public:
 		ECS::Component::Velocity* player_velocity;
 		ECS::Component::Sprite* player_sprite;
 		ECS::Component::Animation* player_animation;
+		ECS::Component::Physics* player_physics;
+		ECS::Component::Rotatable* player_rotation;
+
+
+
+
+
+
+
 		void Init(SDL_Renderer* renderer)
 		{
+			int sun = Entity::CreateEntity();
+			Entity::AddComponent(sun, Component::Sprite{TextureManager::Load(renderer, "assets/textures/sun.png"), -420}, Entity::sprites);
+			Entity::AddComponent(sun, Component::Position{}, Entity::positions);
+			Entity::AddComponent(sun, Component::Parallax{0.00000001, 0.0000001 }, Entity::parallaxes);
+			CreateClouds(420, renderer);
+
+
+			/*
 			
-			for (int i = 0; i < 10000; i++)
+			for (int i = 0; i < 420; i++)
 			{
 				int tree = Entity::CreateEntity();
 				Entity::AddComponent(tree, Component::Sprite{ TextureManager::Load(renderer, "assets/textures/tree.png"), 1 }, Entity::sprites);
-				Entity::AddComponent(tree, Component::Position{ (double)(rand() % 5420), (double)(rand() % 5420) }, Entity::positions);
+				Entity::AddComponent(tree, Component::Position{ (double)(rand() % 420), (double)(rand() % 420) }, Entity::positions);
+				Entity::AddComponent(tree, Component::Rotatable{}, Entity::rotatables);
 				trees.push_back(tree);
+				tree_rotations[i] = Entity::GetComponent(tree, Entity::rotatables);
 			}
+			*/
+			int ground = Entity::CreateEntity();
+			auto ground_texture = System::MakeRectangleTexture(renderer, 10000, 2500, 128, 0, 128);
+			SDL_FRect ground_rect = { -5000, 250, 10000, 2500 };
+
+			auto ground_collider = System::CreateCollidersFromTexture(ground_texture, ground_rect.x, ground_rect.y);
+			Entity::AddComponent(ground, Component::Sprite{ ground_texture, -1}, Entity::sprites);
+			Entity::AddComponent(ground, Component::Collider{ ground_rect, 0, 0, true }, Entity::colliders);
+			Entity::AddComponent(ground, Component::Position{ground_rect.x, ground_rect.y }, Entity::positions);
 			
+
+
+
+
+
+
+
+
 			Entity::AddComponent(camera, Component::Position{0, 0}, Entity::positions);
 			
+
+			Entity::AddComponent(world, Component::Position{ 0, 0 }, Entity::positions);
+			Entity::AddComponent(world, Component::Sprite{ TextureManager::Load(renderer, "assets/textures/icon.png"), 69420 }, Entity::sprites);
+
+
 			Entity::AddComponent(player, Component::Position{ 0, 0 }, Entity::positions);
 			Entity::AddComponent(player, Component::Velocity{ 0, 0 }, Entity::velocities);
 			Entity::AddComponent(player, Component::Sprite{ TextureManager::Load(renderer, "assets/textures/player_spritesheet.png"), 420 }, Entity::sprites);
-			Entity::AddComponent(player, Component::Animation{ 0, 0.0f, 100.0f, true, {}, 1.0f, 0, 0 }, Entity::animations);
+			Entity::AddComponent(player, Component::Animation{ 0, 0.0f, 100.0f, true, {}, 1.0f, 0, 0, 8 }, Entity::animations);
+			Entity::AddComponent(player, Component::Physics{ 100.0, 0.0f}, Entity::physics);
+			Entity::AddComponent(player, Component::Rotatable{}, Entity::rotatables);
+			Entity::AddComponent(player, Component::Collider{ SDL_FRect{0, 0, 16, 32}, 8}, Entity::colliders);
 
-
-			Entity::AddComponent(world, Component::Position{ 200, 200 }, Entity::positions);
-			Entity::AddComponent(world, Component::Sprite{ TextureManager::Load(renderer, "assets/textures/world.png"), 1}, Entity::sprites);
+			
 			camera_position = Entity::GetComponent(camera, Entity::positions);
 			player_position = Entity::GetComponent(player, Entity::positions);
 			player_velocity = Entity::GetComponent(player, Entity::velocities);
 			player_sprite = Entity::GetComponent(player, Entity::sprites);
 			player_animation = Entity::GetComponent(player, Entity::animations);
-
-
+			player_physics = Entity::GetComponent(player, Entity::physics);
+			player_rotation = Entity::GetComponent(player, Entity::rotatables);
 			if (!player_sprite || !player_sprite->texture)
 			{
 				std::cerr << "ERROR NO SPRITE!!!!!!!!";
@@ -448,32 +779,36 @@ public:
 
 
 		}
+		double speed;
 		void Loop(SDL_Renderer* renderer, double elapsed)
 		{
+			
 			// process inputs -> process behaviors -> calculate velocities -> move entities -> resolve collisions -> render frame
+			MoveClouds();
 
-
-			double player_speed = 200.0;
+			double player_speed = 400.0;
 
 			player_velocity->x = 0.0f;
-			player_velocity->y = 0.0f;
 			player_animation->state = "Idle";
-			if (Input::IsKeyDown(SDL_SCANCODE_W))
-			{
-				player_velocity->y = -player_speed;
-			}
+
 			if (Input::IsKeyDown(SDL_SCANCODE_A))
 			{
 				player_velocity->x = -player_speed;
 			}
-			if (Input::IsKeyDown(SDL_SCANCODE_S))
-			{
-				player_velocity->y = player_speed;
-			}
-			if (Input::IsKeyDown(SDL_SCANCODE_D))
+			else if (Input::IsKeyDown(SDL_SCANCODE_D))
 			{
 				player_velocity->x = player_speed;
 			}
+
+
+
+			if (Input::IsKeyPressed(SDL_SCANCODE_SPACE) && player_physics->onFloor)
+			{
+				player_velocity->y = -640;
+				player_physics->onFloor = false;
+			}
+
+
 
 
 			if (Input::IsKeyDown(SDL_SCANCODE_W) || Input::IsKeyDown(SDL_SCANCODE_A) || Input::IsKeyDown(SDL_SCANCODE_S) || Input::IsKeyDown(SDL_SCANCODE_D))
@@ -496,17 +831,90 @@ public:
 				player_animation->row = 1;
 				player_animation->maxFrames = 8;
 			}
+
+			if (Input::IsKeyDown(SDL_SCANCODE_E))
+			{
+				speed = 1 + pow(speed, speed);
+				player_velocity->x = speed;
+			}
+			std::cout << player_position->x << "\n";
+
+
+			//player_rotation->angle += 1;
+			for (auto& tree_rotation : tree_rotations)
+			{
+				tree_rotation.second->angle += rand() % 10;
+			}
+
 			
 			float textureWidth, textureHeight;
 			SDL_GetTextureSize(player_sprite->texture,  & textureWidth, & textureHeight);
 
-			camera_position->x = (player_position->x + (textureWidth/player_animation->maxFrames) /2) - window->width/2;
-			camera_position->y = (player_position->y + (textureHeight / player_animation->maxFrames) /2 ) - window->height/2;
+			float frameWidth = textureWidth / player_animation->maxFrames;
+			float frameHeight = textureHeight / player_animation->totalRows;
+
+			float spriteCenterX = player_position->x + frameWidth / 2.0f;
+			float spriteCenterY = player_position->y + frameHeight / 2.0f;
+			camera_position->x = spriteCenterX - window->width/2.0f;
+			camera_position->y = spriteCenterY - window->height/2.0f;
 
 			
 
 
 		}
+		void PrepareFrame(SDL_Renderer* renderer, double elapsed)
+		{
+			float textureWidth, textureHeight;
+			SDL_GetTextureSize(player_sprite->texture, &textureWidth, &textureHeight);
+
+			float frameWidth = textureWidth / player_animation->maxFrames;
+			float frameHeight = textureHeight / player_animation->totalRows;
+
+			float spriteCenterX = player_position->x + frameWidth / 2.0f;
+			float spriteCenterY = player_position->y + frameHeight / 2.0f;
+			camera_position->x = spriteCenterX - window->width / 2.0f;
+			camera_position->y = spriteCenterY - window->height / 2.0f;
+		}
+
+		void CreateClouds(int howMany, SDL_Renderer* renderer)
+		{
+			for (int i = 0; i < howMany; ++i)
+			{
+				int cloud = Entity::CreateEntity();
+				auto cloudTexture = TextureManager::Load(renderer, "assets/textures/clouds.png");
+				SDL_SetTextureAlphaMod(cloudTexture, std::max(21, rand() % 255));
+				Entity::AddComponent(cloud, Component::Position{(double)(rand() % 420), (double)(rand() % 420) }, Entity::positions);
+				Entity::AddComponent(cloud, Component::Velocity{(double)(rand() % 69)}, Entity::velocities);
+				Entity::AddComponent(cloud, Component::Sprite{ cloudTexture, -420}, Entity::sprites);
+				Entity::AddComponent(cloud, Component::Parallax
+					{ 
+						(float)(0.01 + static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * (0.1 - 0.01)),
+						(float)(0.01 + static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * (0.1 - 0.01)) 
+					}, 
+					Entity::parallaxes);
+				Entity::AddComponent(cloud, Component::Animation{rand() % 2, 0.0f, 0.0f, false, "", 1.0f, rand() % 2, 2, 2}, Entity::animations);
+				clouds.push_back(cloud);
+			}
+		}
+		void MoveClouds()
+		{
+			for (auto& i : clouds)
+			{
+				auto cloud_pos = Entity::GetComponent(i, Entity::positions);
+				if (cloud_pos->x > 1280)
+				{
+					auto cloud_speed = Entity::GetComponent(i, Entity::velocities);
+					cloud_speed->x = rand() % 69;
+					cloud_pos->x = -420;
+				}
+			}
+		}
+
+
+
+			
+
+
 	};
 };
 int ECS::Entity::nextEntity = 0;
@@ -516,18 +924,19 @@ std::unordered_map<int, ECS::Component::Position> ECS::Entity::positions = {};
 std::unordered_map<int, ECS::Component::Sprite> ECS::Entity::sprites = {};
 std::unordered_map<int, ECS::Component::Collider> ECS::Entity::colliders = {};
 std::unordered_map<int, ECS::Component::Animation> ECS::Entity::animations = {};
-
-
+std::unordered_map<int, ECS::Component::Physics> ECS::Entity::physics = {};
+std::unordered_map<int, ECS::Component::Rotatable> ECS::Entity::rotatables = {};
+std::unordered_map<int, ECS::Component::Parallax> ECS::Entity::parallaxes = {};
 int main()  
 { 
+	srand(time(NULL));
 	if (!SDL_Init(SDL_INIT_VIDEO))
 	{
 		std::cerr << SDL_GetError();
 	}
 
 
-	Window window = Window();
-	std::cout << "!!!!!!!hi\n";  
+	Window window = Window();;  
 
 	window.CreateWindow("Hi!!!", 1280, 720);
 
@@ -544,7 +953,7 @@ int main()
 	while (isRunning)
 	{
 		// process inputs -> process behaviors -> calculate velocities -> move entities -> resolve collisions -> render frame
-		std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+		auto begin = std::chrono::high_resolution_clock::now();
 		
 		for (std::unordered_map<SDL_Scancode, bool>::iterator i = Input::keysPressed.begin(); i != Input::keysPressed.end(); i++)
 		{
@@ -572,18 +981,29 @@ int main()
 		
 
 		game.Loop(window.GetRenderer(), elapsed);
-		ECS::System::Move(ECS::Entity::velocities, ECS::Entity::positions, elapsed);
+		ECS::System::UpdatePhysics(ECS::Entity::physics, ECS::Entity::velocities, elapsed);
 		ECS::System::UpdateAnimationFrames(ECS::Entity::animations, elapsed);
-		ECS::System::Collide(ECS::Entity::colliders);
-		SDL_RenderClear(window.GetRenderer());
+		ECS::System::Move(ECS::Entity::velocities, ECS::Entity::positions, elapsed);
+		ECS::System::Collide(ECS::Entity::colliders, ECS::Entity::positions, ECS::Entity::velocities, ECS::Entity::physics);
 		SDL_SetRenderDrawColor(window.GetRenderer(), 135, 197, 255, SDL_ALPHA_OPAQUE);
-		ECS::System::Draw(window.GetRenderer(), ECS::Entity::sprites, ECS::Entity::animations, ECS::Entity::positions, game.camera_position->x, game.camera_position->y,	game.window->width, game.window->height);
+		
+
+
+		game.PrepareFrame(window.GetRenderer(), elapsed);
+		SDL_RenderClear(window.GetRenderer());
+		ECS::System::Draw(window.GetRenderer(), ECS::Entity::sprites, ECS::Entity::animations, ECS::Entity::parallaxes, ECS::Entity::rotatables,ECS::Entity::positions, game.camera_position->x, game.camera_position->y,	game.window->width, game.window->height);
+		
+		
+		// remove this later
+		ECS::System::DrawColliders(window.GetRenderer(), ECS::Entity::colliders, game.camera_position->x, game.camera_position->y);
+
+
 		SDL_RenderPresent(window.GetRenderer());
 
-		std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+		auto end = std::chrono::high_resolution_clock::now();
 		std::chrono::duration<double> deltaTime = end - begin;
-		std::cout << "fps: " << 1.0 / deltaTime.count() << "\n";
-		elapsed = deltaTime.count();
+		//std::cout << "FPS: " << 1.0 / deltaTime.count() << "\n";
+		elapsed = (deltaTime.count());
 
 		
 	}
