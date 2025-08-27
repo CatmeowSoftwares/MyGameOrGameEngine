@@ -1,9 +1,10 @@
  #include <iostream>  
+#include <stdio.h>
 
 #include <SDL3/SDL.h> 
 #include <SDL3/SDL_render.h>
 #include <SDL3_image/SDL_image.h>
-#include <SDL_mixer.h>
+//#include <SDL_mixer.h>
 #include <SDL3_ttf/SDL_ttf.h>
 
 #include <vector>
@@ -82,13 +83,16 @@ class Window
 	SDL_Renderer* renderer = nullptr;
 
 
-	bool isRunning = true;
+	static bool isRunning;
 public:
 
 	int width = 0;
 	int height = 0;
 
-
+	static void ForceQuit()
+	{
+		isRunning = false;
+	}
 	SDL_Renderer* GetRenderer()
 	{
 		return renderer;
@@ -130,7 +134,7 @@ public:
 		isRunning = false;
 	}
 };
-
+bool Window::isRunning = true;
 
 std::string printBool(bool value)
 {
@@ -724,7 +728,19 @@ public:
 
 
 
+		int CreateFloor(SDL_Renderer* renderer, int x, int y, int w, int h)
+		{
+			int ground = Entity::CreateEntity();
+			auto ground_texture = System::MakeRectangleTexture(renderer, w, h, 128, 0, 128);
+			SDL_FRect ground_rect = { x, y, w, h };
 
+			auto ground_collider = System::CreateCollidersFromTexture(ground_texture, ground_rect.x, ground_rect.y);
+			Entity::AddComponent(ground, Component::Sprite{ ground_texture, -1 }, Entity::sprites);
+			Entity::AddComponent(ground, Component::Collider{ ground_rect, 0, 0, true }, Entity::colliders);
+			Entity::AddComponent(ground, Component::Position{ ground_rect.x, ground_rect.y }, Entity::positions);
+			return ground;
+
+		}
 
 		void Init(SDL_Renderer* renderer)
 		{
@@ -747,17 +763,15 @@ public:
 				tree_rotations[i] = Entity::GetComponent(tree, Entity::rotatables);
 			}
 			*/
-			int ground = Entity::CreateEntity();
-			auto ground_texture = System::MakeRectangleTexture(renderer, 10000, 2500, 128, 0, 128);
-			SDL_FRect ground_rect = { -5000, 250, 10000, 2500 };
-
-			auto ground_collider = System::CreateCollidersFromTexture(ground_texture, ground_rect.x, ground_rect.y);
-			Entity::AddComponent(ground, Component::Sprite{ ground_texture, -1}, Entity::sprites);
-			Entity::AddComponent(ground, Component::Collider{ ground_rect, 0, 0, true }, Entity::colliders);
-			Entity::AddComponent(ground, Component::Position{ground_rect.x, ground_rect.y }, Entity::positions);
-			
 
 
+			CreateFloor(renderer, 0, 128, 32, 8);
+			CreateFloor(renderer, 64, 64, 32, 8);
+			CreateFloor(renderer, 192, 32, 32, 8);
+			CreateFloor(renderer, 256, 0, 32, 8);
+			CreateFloor(renderer, 128, -64, 32, 8);
+			CreateFloor(renderer, 64, -64, 32, 8);
+			CreateFloor(renderer, 0, -128, 32, 8);
 
 
 
@@ -766,11 +780,11 @@ public:
 
 			Entity::AddComponent(camera, Component::Position{0, 0}, Entity::positions);
 			
-
+			/*
 			Entity::AddComponent(world, Component::Position{ 0, 0 }, Entity::positions);
 			Entity::AddComponent(world, Component::Sprite{ TextureManager::Load(renderer, "assets/textures/icon.png"), 69420 }, Entity::sprites);
 
-
+			*/
 			Entity::AddComponent(player, Component::Position{ 0, 0 }, Entity::positions);
 			Entity::AddComponent(player, Component::Velocity{ 0, 0 }, Entity::velocities);
 			Entity::AddComponent(player, Component::Sprite{ TextureManager::Load(renderer, "assets/textures/player_spritesheet.png"), 420 }, Entity::sprites);
@@ -847,10 +861,10 @@ public:
 				player_animation->maxFrames = 8;
 			}
 
-			if (Input::IsKeyDown(SDL_SCANCODE_E))
+			if (Input::IsKeyPressed(SDL_SCANCODE_R))
 			{
-				speed = 1 + pow(speed, speed);
-				player_velocity->x = speed;
+				player_position->x = 0.0;
+				player_position->y = 0.0;
 			}
 			std::cout << player_position->x << "\n";
 
