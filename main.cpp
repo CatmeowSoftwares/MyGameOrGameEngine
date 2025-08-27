@@ -1,11 +1,15 @@
  #include <iostream>  
+
 #include <SDL3/SDL.h> 
+#include <SDL3/SDL_render.h>
 #include <SDL3_image/SDL_image.h>
+#include <SDL_mixer.h>
+#include <SDL3_ttf/SDL_ttf.h>
+
 #include <vector>
 #include <unordered_map>
-#include <SDL3/SDL_render.h>
+
 #include <chrono>
-#include <vector>
 #include <utility>
 #include <algorithm>
 
@@ -27,10 +31,23 @@ public:
 	}
 
 
-		static int GetMousePosX()
-		{
-			return 0;
-		}
+	static int GetMousePosX()
+	{
+		return 0;
+	}
+	static int GetMousePosY()
+	{
+		return 0;
+	}
+	static bool IsLeftKeyPressed()
+	{
+		return false;
+	}
+
+	static bool IsMousePressed(SDL_MouseButtonEvent mouse)
+	{
+		return false;
+	}
 };
 std::unordered_map<SDL_Scancode, bool> Input::keysPressed;
 std::unordered_map<SDL_Scancode, bool> Input::keysDown;
@@ -53,9 +70,7 @@ public:
 	static void Draw(SDL_Renderer* renderer, SDL_Texture* texture, int x, int y, double angle = 0.0, const SDL_FPoint* center = nullptr, SDL_FRect* srcRect = nullptr, SDL_FRect* dstRect = nullptr, SDL_FlipMode flipMode = SDL_FLIP_NONE)
 	{
 		float textureWidth, textureHeight;
-		SDL_GetTextureSize(texture, &textureWidth, &textureHeight);
-		//SDL_FRect dst = { (float)floor(x), (float)floor(y), srcRect ? srcRect->w : (float)textureWidth, srcRect ? srcRect->h : (float)textureHeight };
-		//SDL_RenderTexture(renderer, texture, srcRect, &dst);
+		SDL_GetTextureSize(texture, &textureWidth, &textureHeight);												
 		SDL_RenderTextureRotated(renderer, texture, srcRect, dstRect, angle, center, flipMode);
 	}
 };
