@@ -247,6 +247,18 @@ public:
 			float size = 21.0f;
 				
 		};
+		struct Range
+		{
+			float value = 0.0f;
+			float min = -1.0f;
+			float max = 1.0f;
+			Range(float value = 0.0f, float min = -1.0f, float max = 1.0f)
+			{
+				this->value = value;
+				this->min = min;
+				this->max = max;
+			}
+		};
 		struct Audio
 		{
 			SDL_AudioStream* stream;
@@ -282,7 +294,7 @@ public:
 			const auto& animations = Components<Component::Animation>::GetComponentStorage();
 			const auto& rotatables = Components<Component::Rotatable>::GetComponentStorage();
 
-
+			
 			std::vector<std::pair<int, Component::Sprite>> sortedSprites;
 			for (auto& i : sprites)
 			{
@@ -292,7 +304,7 @@ public:
 
 			std::sort(sortedSprites.begin(), sortedSprites.end(), [](const std::pair<int, Component::Sprite>& a, const std::pair<int, Component::Sprite>& b) {return a.second.z < b.second.z;});
 
-
+			
 			for (auto& sprite : sortedSprites)
 			{
 				int entity = sprite.first;
@@ -642,6 +654,24 @@ public:
 			return texture;
 		}
 
+		static SDL_Texture* CreateCircle(SDL_Renderer* renderer, float radius, Uint8 r, Uint8 g, Uint8 b, Uint8 a = 255)
+			{
+				SDL_Surface surface;
+				//std::vector<int> xs;
+				//std::vector<int> ys;
+				SDL_SetRenderDrawColor(renderer, r, g, b, a);
+				const float pi = 3.1415926535f;
+				for (float angle = 0.0f; angle < 2 * pi; angle += 0.01f) {
+					//xs.push_back(x + radius * cos(angle));
+					//ys.push_back(x + radius * sin(angle));
+					int x = x + radius * cos(angle);
+					int y = x + radius * sin(angle);
+					SDL_WriteSurfacePixel(&surface, x, y, r, g, b, a);
+				}
+				SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, &surface);
+				return texture;
+			};
+
 		static void DrawColliders(SDL_Renderer* renderer, int camX, int camY)
 		{
 			const auto& colliders = Components<Component::Collider>::GetComponentStorage();
@@ -699,6 +729,33 @@ public:
 		}
 
 
+
+
+
+		static void SyncButtonPositions()
+		{
+			auto& buttons = Components<Component::Button>::GetComponentStorage();
+			auto& positions = Components<Component::Position>::GetComponentStorage();
+			for (auto& i : buttons)
+			{
+				auto entity = i.first;
+				auto& button = i.second;
+
+				auto position = positions.find(entity);
+				if (position != positions.end())
+				{
+					auto& pos = position->second;
+					pos.x = button.rect.x;
+					pos.y = button.rect.y;
+				}
+				
+
+			}
+
+		}
+
+
+
 	};
 	template <typename T>
 	class Components 
@@ -741,7 +798,8 @@ public:
 		template<typename T>
 		static void AddComponent(int entity, T component)
 		{
-			Components<T>::GetComponentStorage()[entity] = component;
+			std::unordered_map<int, T>& storage = Components<T>::GetComponentStorage();
+			storage.insert_or_assign(entity, component);
 		};
 		template<typename T>
 		static T* GetComponent(int entity, std::unordered_map<int, T>& componentMap)
@@ -782,7 +840,7 @@ public:
 		int camera = Entity::CreateEntity();
 		int player = Entity::CreateEntity();
 		int world = Entity::CreateEntity();
-
+		
 		std::vector<int> clouds;
 		std::vector<int> trees;
 		std::unordered_map<int, Component::Rotatable*> tree_rotations;
@@ -797,6 +855,8 @@ public:
 		ECS::Component::Rotatable* player_rotation;
 
 		int buttonId;
+		int range;
+		ECS::Component::Position* range_position;
 		ECS::Component::Button* button;
 
 		
@@ -826,7 +886,42 @@ public:
 			return ground;
 
 		}
+		int CreateRange(SDL_Renderer* renderer, float radius, int x, int y, uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255U)
+		{
+			int range = Entity::CreateEntity();
+			SDL_Texture* texture;
+			auto CreateCircle = [&]() -> SDL_Surface*
+				{
+					SDL_Surface surface;
+					//std::vector<int> xs;
+					//std::vector<int> ys;
+					int z = (x + y) / 2;
+					SDL_SetRenderDrawColor(renderer, r, g, b, a);
+					const float pi = 3.1415926535f;
+					for (float angle = 0.0f; angle < 2 * pi; angle += 0.01f) {
+						//xs.push_back(x + radius * cos(angle));
+						//ys.push_back(x + radius * sin(angle));
+						int _x = z + radius * cos(angle);
+						int _y = z + radius * sin(angle);
+						SDL_WriteSurfacePixel(&surface, x, y, r, g, b, a);
+					}
 
+					return &surface;
+				};
+			SDL_Surface* surface = CreateCircle();
+			SDL_Rect rect;
+			rect.x = x;
+			rect.y = y;
+			rect.w = (int)radius;
+			rect.h = (int)radius;
+			texture = SDL_CreateTextureFromSurface(renderer, surface);
+			Entity::AddComponent(range, Component::Sprite{ texture, 694299 });
+			Entity::AddComponent(range, Component::Position{ (double)x, (double)y });
+			Entity::AddComponent(range, Component::Parallax{ 0.0, 0.0 });
+			Entity::AddComponent(range, Component::Range{});
+			Entity::AddComponent(range, Component::Button{ rect });
+			return range;
+		}
 
 		int CreateButton(SDL_Renderer* renderer, int x, int y, int w, int h, uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255U)
 		{
@@ -939,7 +1034,8 @@ public:
 
 			buttonId = CreateButtonWithLabel(renderer, "Meow", 100, 100, 200, 100, 255 / 2, 255 / 2, 255 / 2);
 
-
+			range = CreateRange(renderer, 10.0f, 300, 300, 255, 255, 255, 255);
+			range_position = Entity::GetComponent<Component::Position>(range);
 			Entity::AddComponent(camera, Component::Position{0, 0});
 			
 			/*
@@ -965,11 +1061,12 @@ public:
 			player_rotation = Entity::GetComponent<Component::Rotatable>(player);
 
 			button = Entity::GetComponent<Component::Button>(buttonId);
-			Entity::GetComponent<Component::Position>(1);
 		}
 		double speed;
 		void Loop(SDL_Renderer* renderer, double elapsed)
 		{
+			range_position->x = rand() % 420;																		
+			range_position->y = rand() % 420;
 			// process inputs -> process behaviors -> calculate velocities -> move entities -> resolve collisions -> render frame
 			MoveClouds();
 
@@ -1190,6 +1287,7 @@ int main()
 		ECS::System::UpdateAnimationFrames(elapsed);
 		ECS::System::Move(elapsed);
 		ECS::System::Collide();
+		ECS::System::SyncButtonPositions();
 		SDL_SetRenderDrawColor(window.GetRenderer(), 135, 197, 255, SDL_ALPHA_OPAQUE);
 		
 
@@ -1207,7 +1305,7 @@ int main()
 
 		auto end = std::chrono::high_resolution_clock::now();
 		std::chrono::duration<double> deltaTime = end - begin;
-		//std::cout << "FPS: " << 1.0 / deltaTime.count() << "\n";
+		std::cout << "FPS: " << 1.0 / deltaTime.count() << "\n";
 		elapsed = (deltaTime.count());
 
 		
