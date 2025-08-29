@@ -656,21 +656,52 @@ public:
 
 		static SDL_Texture* CreateCircle(SDL_Renderer* renderer, float radius, Uint8 r, Uint8 g, Uint8 b, Uint8 a = 255)
 			{
-				SDL_Surface surface;
-				//std::vector<int> xs;
-				//std::vector<int> ys;
+				int diameter = radius * 2;
+				SDL_Surface* surface = SDL_CreateSurface(diameter, diameter, SDL_PIXELFORMAT_RGBA8888);
+				SDL_FillSurfaceRect(surface, NULL, SDL_MapRGBA(SDL_GetPixelFormatDetails(surface->format), NULL, 0, 0, 0, 0));
+				int cx = (int)radius;
+				int cy = (int)radius;
 				SDL_SetRenderDrawColor(renderer, r, g, b, a);
 				const float pi = 3.1415926535f;
 				for (float angle = 0.0f; angle < 2 * pi; angle += 0.01f) {
-					//xs.push_back(x + radius * cos(angle));
-					//ys.push_back(x + radius * sin(angle));
-					int x = x + radius * cos(angle);
-					int y = x + radius * sin(angle);
-					SDL_WriteSurfacePixel(&surface, x, y, r, g, b, a);
+					int _x = cx + (int)radius * cos(angle);
+					int _y = cy + (int)radius * sin(angle);
+					SDL_WriteSurfacePixel(surface, _x, _y, r, g, b, a);
 				}
-				SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, &surface);
+				SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
+				SDL_DestroySurface(surface);
 				return texture;
 			};
+		static SDL_Texture* CreateCircleFill(SDL_Renderer* renderer, float radius, Uint8 r, Uint8 g, Uint8 b, Uint8 a = 255)
+		{
+			
+			int diameter = radius * 2;
+			SDL_Surface* surface = SDL_CreateSurface(diameter, diameter, SDL_PIXELFORMAT_RGBA8888);
+			auto formatDetails = SDL_GetPixelFormatDetails(surface->format);
+			Uint32 color = SDL_MapRGBA(formatDetails, NULL, r, g, b, a);
+			SDL_FillSurfaceRect(surface, NULL, SDL_MapRGBA(formatDetails, NULL, 0, 0, 0, 0));
+			
+			int cx = (int)radius;
+			int cy = (int)radius;
+			SDL_SetRenderDrawColor(renderer, r, g, b, a);
+			const float pi = 3.1415926535f;
+			for (int y = -radius; y <= radius; y++)
+			{
+				for (int x = -radius; x <= radius; x++)
+				{
+					if (x * x + y * y <= radius * radius)
+					{
+						int px = cx + x;
+						int py = cy + y;
+						Uint32* pixels = (Uint32*)surface->pixels;
+						pixels[py * surface->w + px] = color;
+					}
+				}
+			}
+			SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
+			SDL_DestroySurface(surface);
+			return texture;
+		}
 
 		static void DrawColliders(SDL_Renderer* renderer, int camX, int camY)
 		{
@@ -889,38 +920,26 @@ public:
 		int CreateRange(SDL_Renderer* renderer, float radius, int x, int y, uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255U)
 		{
 			int range = Entity::CreateEntity();
-			SDL_Texture* texture;
-			auto CreateCircle = [&]() -> SDL_Surface*
-				{
-					SDL_Surface surface;
-					//std::vector<int> xs;
-					//std::vector<int> ys;
-					int z = (x + y) / 2;
-					SDL_SetRenderDrawColor(renderer, r, g, b, a);
-					const float pi = 3.1415926535f;
-					for (float angle = 0.0f; angle < 2 * pi; angle += 0.01f) {
-						//xs.push_back(x + radius * cos(angle));
-						//ys.push_back(x + radius * sin(angle));
-						int _x = z + radius * cos(angle);
-						int _y = z + radius * sin(angle);
-						SDL_WriteSurfacePixel(&surface, x, y, r, g, b, a);
-					}
-
-					return &surface;
-				};
-			SDL_Surface* surface = CreateCircle();
+			SDL_Texture* texture = System::CreateCircleFill(renderer, radius, r, g, b, a);
 			SDL_Rect rect;
 			rect.x = x;
 			rect.y = y;
 			rect.w = (int)radius;
 			rect.h = (int)radius;
-			texture = SDL_CreateTextureFromSurface(renderer, surface);
 			Entity::AddComponent(range, Component::Sprite{ texture, 694299 });
 			Entity::AddComponent(range, Component::Position{ (double)x, (double)y });
 			Entity::AddComponent(range, Component::Parallax{ 0.0, 0.0 });
 			Entity::AddComponent(range, Component::Range{});
 			Entity::AddComponent(range, Component::Button{ rect });
 			return range;
+		}
+		int CreateSlider(SDL_Renderer* renderer)
+		{
+
+		}
+		int CreateRainbowSliderToChangeColorOfSomethingIdk()
+		{
+
 		}
 
 		int CreateButton(SDL_Renderer* renderer, int x, int y, int w, int h, uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255U)
@@ -1034,7 +1053,7 @@ public:
 
 			buttonId = CreateButtonWithLabel(renderer, "Meow", 100, 100, 200, 100, 255 / 2, 255 / 2, 255 / 2);
 
-			range = CreateRange(renderer, 10.0f, 300, 300, 255, 255, 255, 255);
+			range = CreateRange(renderer, 10.0f, 300, 300, 0, 0, 0, 255);
 			range_position = Entity::GetComponent<Component::Position>(range);
 			Entity::AddComponent(camera, Component::Position{0, 0});
 			
