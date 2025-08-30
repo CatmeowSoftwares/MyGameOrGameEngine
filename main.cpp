@@ -148,18 +148,81 @@ public:
 	{
 		return IMG_LoadPNG_IO(SDL_IOFromFile(path.c_str(), mode.c_str()));
 	}
+	static SDL_Texture* CreateTextureFromSurface(SDL_Surface* surface)
+	{			
+		SDL_Texture* texture = SDL_CreateTextureFromSurface(Window::GetRenderer(), surface);
+		return texture;
+	}
 
 	static SDL_Texture* Load(std::string path)
 	{
-		return IMG_LoadTexture(Window::GetRenderer(), path.c_str());
+		SDL_Texture* texture = IMG_LoadTexture(Window::GetRenderer(), path.c_str());
+		return texture;
+	}
+	static SDL_Texture* MakeRectangleTexture(int w, int h, Uint8 r, Uint8 g, Uint8 b, Uint8 a = 255)
+	{
+		SDL_Texture* texture = SDL_CreateTexture(Window::GetRenderer(), SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_TARGET, w, h);
+		SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+		SDL_SetRenderTarget(Window::GetRenderer(), texture);
+		SDL_SetRenderDrawColor(Window::GetRenderer(), r, g, b, a);
+		SDL_RenderClear(Window::GetRenderer());
+		SDL_SetRenderTarget(Window::GetRenderer(), nullptr);
+		return texture;
+	}
+
+	static SDL_Texture* CreateCircleTexture(float radius, Uint8 r, Uint8 g, Uint8 b, Uint8 a = 255)
+	{
+		int diameter = radius * 2;
+		SDL_Surface* surface = SDL_CreateSurface(diameter, diameter, SDL_PIXELFORMAT_RGBA8888);
+		SDL_FillSurfaceRect(surface, NULL, SDL_MapRGBA(SDL_GetPixelFormatDetails(surface->format), NULL, 0, 0, 0, 0));
+		int cx = (int)radius;
+		int cy = (int)radius;
+		SDL_SetRenderDrawColor(Window::GetRenderer(), r, g, b, a);
+		const float pi = 3.1415926535f;
+		for (float angle = 0.0f; angle < 2 * pi; angle += 0.01f) {
+			int _x = cx + (int)radius * cos(angle);
+			int _y = cy + (int)radius * sin(angle);
+			SDL_WriteSurfacePixel(surface, _x, _y, r, g, b, a);
+		}
+		SDL_Texture* texture = TextureManager::CreateTextureFromSurface(surface);
+		SDL_DestroySurface(surface);
+		return texture;
+	};
+	static SDL_Texture* CreateCircleTextureFill(float radius, Uint8 r, Uint8 g, Uint8 b, Uint8 a = 255)
+	{
+
+		int diameter = radius * 2;
+		SDL_Surface* surface = SDL_CreateSurface(diameter, diameter, SDL_PIXELFORMAT_RGBA8888);
+		auto formatDetails = SDL_GetPixelFormatDetails(surface->format);
+		Uint32 color = SDL_MapRGBA(formatDetails, NULL, r, g, b, a);
+		SDL_FillSurfaceRect(surface, NULL, SDL_MapRGBA(formatDetails, NULL, 0, 0, 0, 0));
+
+		int cx = (int)radius;
+		int cy = (int)radius;
+		SDL_SetRenderDrawColor(Window::GetRenderer(), r, g, b, a);
+		const float pi = 3.1415926535f;
+		for (int y = -radius; y <= radius; y++)
+		{
+			for (int x = -radius; x <= radius; x++)
+			{
+				if (x * x + y * y <= radius * radius)
+				{
+					int px = cx + x;
+					int py = cy + y;
+					Uint32* pixels = (Uint32*)surface->pixels;
+					pixels[py * surface->w + px] = color;
+				}
+			}
+		}
+		SDL_Texture* texture = SDL_CreateTextureFromSurface(Window::GetRenderer(), surface);
+		SDL_DestroySurface(surface);
+		return texture;
 	}
 
 
 
 	static void Draw(SDL_Texture* texture, int x, int y, double angle = 0.0, const SDL_FPoint* center = nullptr, SDL_FRect* srcRect = nullptr, SDL_FRect* dstRect = nullptr, SDL_FlipMode flipMode = SDL_FLIP_NONE)
-	{
-		float textureWidth, textureHeight;
-		SDL_GetTextureSize(texture, &textureWidth, &textureHeight);												
+	{										
 		SDL_RenderTextureRotated(Window::GetRenderer(), texture, srcRect, dstRect, angle, center, flipMode);
 	}
 };
@@ -237,12 +300,6 @@ public:
 			double gravity = 1960.0;
 			double friction = 0.8;
 		};
-		// never use this (for now)
-		struct ColliderCircle
-		{
-			float radius;
-			bool colliding = false;
-		};
 		struct Animation
 		{
 			int frame;
@@ -257,11 +314,11 @@ public:
 			bool end = false;
 			
 		};
-
 		struct Parallax
 		{
 			float x = 1.0f;
-			float y = 1.0f;;
+			float y = 1.0f;
+			bool repeating = false;
 		};
 		struct UI
 		{
@@ -282,7 +339,6 @@ public:
 				this->h = (int)_h;
 			}
 		};
-
 		struct Button
 		{
 			SDL_Rect rect;
@@ -309,18 +365,49 @@ public:
 				this->max = max;
 			}
 		};
-
 		struct Audio
 		{
 			SDL_AudioStream* stream;
 			bool looped = false;
+			float startAfterLoop = 0.0f;
+			SDL_AudioSpec spec;
+			Uint8* wav_data = nullptr;
+			Uint32 wav_len = 0;
+			Audio(std::string path, bool looped = false ,float startAfterLoop = 0.0f)
+			{
+				SDL_AudioSpec spec;
+				Uint8* wav_data = nullptr;
+				Uint32 wav_len = 0;
+
+				SDL_LoadWAV(path.c_str(), &spec, &wav_data, &wav_len);
+				SDL_AudioStream* stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
+				SDL_PutAudioStreamData(stream, wav_data, wav_len);
+
+				this->stream = stream;
+				this->wav_len = wav_len;
+				this->wav_data = wav_data;
+				this->looped = looped;
+				this->spec = spec;
+			}
+
+		};
+		struct TileMap
+		{
+			std::vector<std::vector<int>> cells;
+
+		};
+		struct Tile
+		{
+			// id
 		};
 	};
+
 	class System
 	{
 	public:
 		static void Move(double elapsed)
 		{
+			
 			auto& positions = Components<Component::Position>::GetStorage();
 			const auto& velocities = Components<Component::Velocity>::GetStorage();
 
@@ -334,15 +421,30 @@ public:
 					pos.y += vel->y * elapsed;
 				}
 			}
+
+			
+			/*
+			auto& positions = Components<Component::Position>::Get();
+			const auto& velocities = Components<Component::Velocity>::Get();
+			auto& entities = Entity::entities;
+			for (int i = 0; i < entities.size(); i++)
+			{
+				auto& pos = positions[i];
+				auto& vel = velocities[i];
+				pos.x += vel.x * elapsed;
+				pos.y += vel.y * elapsed;
+			}
+			*/
+
 		}
 		static void Draw(int camX = 0, int camY = 0, int camW = 0, int camH = 0)
 		{
 
-			const auto& sprites = Components<Component::Sprite>::GetStorage();
-			const auto& positions = Components<Component::Position>::GetStorage();
-			const auto& parallaxes = Components<Component::Parallax>::GetStorage();
-			const auto& animations = Components<Component::Animation>::GetStorage();
-			const auto& rotatables = Components<Component::Rotatable>::GetStorage();
+			const std::unordered_map<int, Component::Sprite>& sprites = Components<Component::Sprite>::GetStorage();
+			const std::unordered_map<int, Component::Position>& positions = Components<Component::Position>::GetStorage();
+			const std::unordered_map<int, Component::Parallax>& parallaxes = Components<Component::Parallax>::GetStorage();
+			const std::unordered_map<int, Component::Animation>& animations = Components<Component::Animation>::GetStorage();
+			const std::unordered_map<int, Component::Rotatable>& rotatables = Components<Component::Rotatable>::GetStorage();
 
 			
 			std::vector<std::pair<int, Component::Sprite>> sortedSprites;
@@ -361,7 +463,7 @@ public:
 
 
 				int entity = sprite.first;
-				
+				auto& texture = sprite.second.texture;
 				auto it = positions.find(entity);
 				int x = 0;
 				int y = 0;
@@ -378,15 +480,16 @@ public:
 
 				float parallaxX = 1.0f;
 				float parallaxY = 1.0f;
-
-
+				bool repeating = false;
 				if (parallaxes.find(entity) != parallaxes.end())
 				{
 					auto& parallax = parallaxes.find(entity)->second;
 					parallaxX = parallax.x;
 					parallaxY = parallax.y;
+					repeating = parallax.repeating;
 				}
 
+		
 
 				float frameWidth = w;
 				float frameHeight = h;
@@ -435,10 +538,6 @@ public:
 				{
 					continue;
 				}
-
-
-
-
 				auto rotatable = rotatables.find(entity);
 				double angel = 0.0;
 				SDL_FPoint* point = nullptr;
@@ -449,7 +548,35 @@ public:
 					point = rotate.center;
 				}
 
-				TextureManager::Draw(sprite.second.texture, 0, 0, angel, point, &srcRect, &dstRect);
+
+
+				
+				if (repeating)
+				{
+
+					float drawX = fmodf((x - camX * parallaxX), w);
+					if (drawX > 0) { drawX -= w; }
+					float drawY = (float)floor(y - camY * parallaxY);
+					for (float offsetX = drawX; offsetX < camW; offsetX += w)
+					{
+						dstRect.x = offsetX;
+						dstRect.y = drawY;
+						dstRect.w = w;
+						dstRect.h = h;
+						TextureManager::Draw(texture, 0, 0, 0.0, NULL, &srcRect, &dstRect);
+					}
+					continue;
+				}
+					
+
+				
+			
+				TextureManager::Draw(texture, 0, 0, angel, point, &srcRect, &dstRect);
+				
+		
+
+			
+				
 
 			}
 		}
@@ -811,65 +938,6 @@ public:
 			return rect;	
 		}
 
-		static SDL_Texture* MakeRectangleTexture(int w, int h, Uint8 r, Uint8 g, Uint8 b, Uint8 a = 255)
-		{
-			SDL_Texture* texture = SDL_CreateTexture(Window::GetRenderer(), SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_TARGET, w, h);
-			SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
-			SDL_SetRenderTarget(Window::GetRenderer(), texture);
-			SDL_SetRenderDrawColor(Window::GetRenderer(), r, g, b, a);
-			SDL_RenderClear(Window::GetRenderer());
-			SDL_SetRenderTarget(Window::GetRenderer(), nullptr);
-			return texture;
-		}
-
-		static SDL_Texture* CreateCircleTexture(float radius, Uint8 r, Uint8 g, Uint8 b, Uint8 a = 255)
-			{
-				int diameter = radius * 2;
-				SDL_Surface* surface = SDL_CreateSurface(diameter, diameter, SDL_PIXELFORMAT_RGBA8888);
-				SDL_FillSurfaceRect(surface, NULL, SDL_MapRGBA(SDL_GetPixelFormatDetails(surface->format), NULL, 0, 0, 0, 0));
-				int cx = (int)radius;
-				int cy = (int)radius;
-				SDL_SetRenderDrawColor(Window::GetRenderer(), r, g, b, a);
-				const float pi = 3.1415926535f;
-				for (float angle = 0.0f; angle < 2 * pi; angle += 0.01f) {
-					int _x = cx + (int)radius * cos(angle);
-					int _y = cy + (int)radius * sin(angle);
-					SDL_WriteSurfacePixel(surface, _x, _y, r, g, b, a);
-				}
-				SDL_Texture* texture = SDL_CreateTextureFromSurface(Window::GetRenderer(), surface);
-				SDL_DestroySurface(surface);
-				return texture;
-			};
-		static SDL_Texture* CreateCircleTextureFill(float radius, Uint8 r, Uint8 g, Uint8 b, Uint8 a = 255)
-		{
-			
-			int diameter = radius * 2;
-			SDL_Surface* surface = SDL_CreateSurface(diameter, diameter, SDL_PIXELFORMAT_RGBA8888);
-			auto formatDetails = SDL_GetPixelFormatDetails(surface->format);
-			Uint32 color = SDL_MapRGBA(formatDetails, NULL, r, g, b, a);
-			SDL_FillSurfaceRect(surface, NULL, SDL_MapRGBA(formatDetails, NULL, 0, 0, 0, 0));
-			
-			int cx = (int)radius;
-			int cy = (int)radius;
-			SDL_SetRenderDrawColor(Window::GetRenderer(), r, g, b, a);
-			const float pi = 3.1415926535f;
-			for (int y = -radius; y <= radius; y++)
-			{
-				for (int x = -radius; x <= radius; x++)
-				{
-					if (x * x + y * y <= radius * radius)
-					{
-						int px = cx + x;
-						int py = cy + y;
-						Uint32* pixels = (Uint32*)surface->pixels;
-						pixels[py * surface->w + px] = color;
-					}
-				}
-			}
-			SDL_Texture* texture = SDL_CreateTextureFromSurface(Window::GetRenderer(), surface);
-			SDL_DestroySurface(surface);
-			return texture;
-		}
 
 		static void DrawColliders(int camX, int camY)
 		{
@@ -952,18 +1020,76 @@ public:
 			}
 
 		}
+		static void PlayAudio(int entity)
+		{
+			auto& audios = Components<Component::Audio>::GetStorage();
+			auto audio = audios.find(entity);
+			if (audio != audios.end())
+			{
+				auto& au = audio->second;
+				SDL_ResumeAudioStreamDevice(au.stream);
+			}
+		}
+		static void ResetAudioAtPosition(int entity, float start = 0.0f)
+		{
+			auto& audios = Components<Component::Audio>::GetStorage();
+			auto audio = audios.find(entity);
+			if (audio == audios.end())
+			{
+				return;
+			}
 
 
+			auto& au = audio->second;
+			
+			int bytesPerSample = SDL_AUDIO_BYTESIZE(au.spec.format) * au.spec.channels;
+			int bytesPerSecond = au.spec.freq * bytesPerSample;
+			Uint32 startOffset = (Uint32)(start * bytesPerSecond);
+
+			startOffset = std::min(startOffset, au.wav_len);
+			startOffset = (startOffset / bytesPerSample) * bytesPerSample;
+
+
+			std::cout << "Starting at offset: " << startOffset << " bytes (should be " << start << " seconds)\n";
+			SDL_FlushAudioStream(au.stream);
+			SDL_PutAudioStreamData(au.stream, au.wav_data + startOffset, au.wav_len - startOffset);
+			SDL_ResumeAudioStreamDevice(au.stream);
+
+
+		}
+		static void UpdateAudio()
+		{
+			auto& audios = Components<Component::Audio>::GetStorage();
+			for (auto& audio : audios)
+			{
+				int entity = audio.first;
+				auto& au = audio.second;
+
+				if (au.looped && SDL_GetAudioStreamQueued(au.stream) == 0)
+				{
+					std::cout << "Audio ended, restarting at " << au.startAfterLoop << " seconds\n";
+					ResetAudioAtPosition(entity, au.startAfterLoop);
+					//SDL_PutAudioStreamData(au.stream, au.wav_data, au.wav_len);
+				}
+			}
+
+
+		}
 
 	};
 	template <typename T>
 	class Components 
 	{
+		static std::vector<T> mStorage;
 	public:
 		static std::unordered_map<int, T> storage;
 		static std::unordered_map<int, T>& GetStorage()
 		{
 			return storage;
+		}
+		static std::vector<T>& Get()
+		{
+			return mStorage;
 		}
 		template<typename T>
 		static std::vector<std::pair<int, T*>> GetComponentsContaining(const std::vector<int>& entities)
@@ -1001,15 +1127,18 @@ public:
 			storage.insert_or_assign(entity, component);
 		};
 		template<typename T>
+		static void Add(int entity, T component)
+		{
+			std::vector<T>& storage = Components<T>::Get();
+			storage[entity] = component;
+		};
+		template<typename T>
 		static T* GetComponent(int entity, std::unordered_map<int, T>& componentMap)
 		{
-
 			if (componentMap.find(entity) != componentMap.end())
 			{
 				return &componentMap.find(entity)->second;
 			}
-
-
 			return nullptr;
 		}
 		template<typename T>
@@ -1023,6 +1152,51 @@ public:
 			}
 			return nullptr;
 		}
+
+		static void DestroyEntity(int entity)
+		{
+			KillYourself(entity);
+		}
+
+		static void KillYourself(int entity)
+		{
+			std::unordered_map<int, Component::Position>& positions = Components<Component::Position>::GetStorage();
+			std::unordered_map<int, Component::Velocity>& velocities = Components<Component::Velocity>::GetStorage();
+			std::unordered_map<int, Component::Sprite>& sprites = Components<Component::Sprite>::GetStorage();
+			std::unordered_map<int, Component::Rotatable>& rotatables = Components<Component::Rotatable>::GetStorage();
+			std::unordered_map<int, Component::Collider>& collider = Components<Component::Collider>::GetStorage();
+			std::unordered_map<int, Component::Physics>& physics = Components<Component::Physics>::GetStorage();
+			std::unordered_map<int, Component::Animation>& animations = Components<Component::Animation>::GetStorage();
+			std::unordered_map<int, Component::Parallax>& parallaxes = Components<Component::Parallax>::GetStorage();
+			std::unordered_map<int, Component::UI>& uis = Components<Component::UI>::GetStorage();
+			std::unordered_map<int, Component::UISprite>& uiSprites = Components<Component::UISprite>::GetStorage();
+			std::unordered_map<int, Component::Button>& buttons = Components<Component::Button>::GetStorage();
+			std::unordered_map<int, Component::Label>& labels = Components<Component::Label>::GetStorage();
+			std::unordered_map<int, Component::Range>& ranges = Components<Component::Range>::GetStorage();
+			std::unordered_map<int, Component::Audio>& audio = Components<Component::Audio>::GetStorage();
+			std::unordered_map<int, Component::TileMap>& tilemMaps = Components<Component::TileMap>::GetStorage();
+			std::unordered_map<int, Component::Tile>& tiles = Components<Component::Tile>::GetStorage();
+
+
+			positions.erase(entity);
+			velocities.erase(entity);
+			sprites.erase(entity);
+			rotatables.erase(entity);
+			collider.erase(entity);
+			physics.erase(entity);
+			animations.erase(entity);
+			parallaxes.erase(entity);
+			uis.erase(entity);
+			uiSprites.erase(entity);
+			buttons.erase(entity);
+			labels.erase(entity);
+			ranges.erase(entity);
+			audio.erase(entity);
+			tilemMaps.erase(entity);
+			tiles.erase(entity);
+		}
+
+
 
 		static int CreateEntity()
 		{
@@ -1072,10 +1246,10 @@ public:
 			SDL_ResumeAudioStreamDevice(stream);
 
 		}
-		int CreateFloor(int x, int y, int w, int h)
+		int CreateFloor(int x, int y, int w, int h, uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255U)
 		{
 			int ground = Entity::CreateEntity();
-			auto ground_texture = System::MakeRectangleTexture(w, h, 128, 0, 128);
+			auto ground_texture = TextureManager::MakeRectangleTexture(w, h, r, g, b, a);
 			SDL_FRect ground_rect = { x, y, w, h };
 
 			auto ground_collider = System::CreateCollidersFromTexture(ground_texture, ground_rect.x, ground_rect.y);
@@ -1088,7 +1262,7 @@ public:
 		int CreateRange(float radius, int x, int y, uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255U)
 		{
 			int range = Entity::CreateEntity();
-			SDL_Texture* texture = System::CreateCircleTextureFill(radius, r, g, b, a);
+			SDL_Texture* texture = TextureManager::CreateCircleTextureFill(radius, r, g, b, a);
 			SDL_Rect rect;
 			rect.x = x;
 			rect.y = y;
@@ -1118,7 +1292,7 @@ public:
 			rect.y = y;
 			rect.w = w;
 			rect.h = h;
-			SDL_Texture* texture = System::MakeRectangleTexture(w, h, r, g, b, a);
+			SDL_Texture* texture = TextureManager::MakeRectangleTexture(w, h, r, g, b, a);
 
 			Entity::AddComponent(button, Component::Sprite{ texture, 69420 });
 			Entity::AddComponent(button, Component::Position{ (double)x, (double)y });
@@ -1160,7 +1334,7 @@ public:
 			SDL_Color lcolor = { 255U, 255U, 255U, 255U };
 			SDL_Surface* surface = nullptr;
 			SDL_Texture* ltexture = nullptr;
-			SDL_Texture* btexture = System::MakeRectangleTexture(buttonRect.w, buttonRect.h, r, g, b, a);
+			SDL_Texture* btexture = TextureManager::MakeRectangleTexture(buttonRect.w, buttonRect.h, r, g, b, a);
 
 
 
@@ -1171,7 +1345,7 @@ public:
 			float lw, lh;
 			SDL_GetTextureSize(ltexture, &lw, &lh);
 
-			labelRect = { (int)((buttonRect.x + buttonRect.w / 2) - lw/2), (int)((buttonRect.y + buttonRect.h / 2) - lh/2), (int)lw, (int)lh };
+			labelRect = { (int)((buttonRect.x + buttonRect.w / 2) - lw / 2), (int)((buttonRect.y + buttonRect.h / 2) - lh / 2), (int)lw, (int)lh };
 
 
 			Entity::AddComponent(label, Component::Label{ string, lcolor });
@@ -1188,7 +1362,28 @@ public:
 		}
 		void Init()
 		{
-			PlayAudio("assets/audio/music/ForestDayMorning.wav");
+		
+			int mountains = Entity::CreateEntity();
+			Entity::AddComponent(mountains, Component::Parallax{0.01f, 0.0f, true});
+			Entity::AddComponent(mountains, Component::Position{});
+			Entity::AddComponent(mountains, Component::Sprite{ TextureManager::Load("assets/textures/doesthisevenlooklikemountains.png"), -420 });
+
+
+
+			int treesfar = Entity::CreateEntity();
+			Entity::AddComponent(treesfar, Component::Parallax{ 0.15f, 0.01f, true });
+			Entity::AddComponent(treesfar, Component::Position{});
+			Entity::AddComponent(treesfar, Component::Sprite{ TextureManager::Load("assets/textures/doesthisevenlookliketreesfromfar.png"), -1 });
+
+
+			int trees = Entity::CreateEntity();
+			Entity::AddComponent(trees, Component::Parallax{ 0.25f, 0.1f, true });
+			Entity::AddComponent(trees, Component::Position{});
+			Entity::AddComponent(trees, Component::Sprite{ TextureManager::Load("assets/textures/doesthisevenlookliketrees.png"), -1 });
+
+			int forestDay = Entity::CreateEntity();
+			Entity::AddComponent(forestDay, Component::Audio{ "assets/audio/music/ForestDayMorning.wav", true, 10.0f});
+			System::PlayAudio(forestDay);
 			int sun = Entity::CreateEntity();
 			Entity::AddComponent(sun, Component::Sprite{TextureManager::Load("assets/textures/sun.png"), -420});
 			Entity::AddComponent(sun, Component::Position{});
@@ -1209,7 +1404,7 @@ public:
 			}
 			*/
 
-
+			/*
 			CreateFloor(0, 128, 32, 8);
 			CreateFloor(64, 64, 32, 8);
 			CreateFloor(192, 32, 32, 8);
@@ -1217,8 +1412,8 @@ public:
 			CreateFloor(128, -64, 32, 8);
 			CreateFloor(64, -64, 32, 8);
 			CreateFloor(0, -128, 32, 8);
-
-
+			*/
+			CreateFloor(-1000, 128, 2000, 512, 151, 107, 75, 255);
 			buttonId = CreateButtonWithLabel("Meow", 100, 100, 200, 100, 255 / 2, 255 / 2, 255 / 2);
 
 			range = CreateRange(10.0f, 300, 300, 0, 0, 0, 255);
@@ -1393,10 +1588,10 @@ public:
 int ECS::Entity::nextEntity = 0;
 std::vector<int> ECS::Entity::entities = {};
 template<typename T> std::unordered_map<int, T> ECS::Components<T>::storage;
+template<typename T>  std::vector<T> ECS::Components<T>::mStorage;
 
-
-int main()  
-{ 
+int main()
+{
 	srand(time(NULL));
 	if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO))
 	{
@@ -1409,7 +1604,7 @@ int main()
 	}
 
 	font = TTF_OpenFont("assets/Andy Bold.ttf", 20.0f);
-	Window window = Window();;  
+	Window window = Window();;
 
 	window.CreateWindow("Hi!!!", 1280, 720);
 	window.SetWindowIcon(TextureManager::LoadSurface("assets/textures/icon.png"));
@@ -1421,16 +1616,17 @@ int main()
 	game.window = &window;
 	game.Init();
 
-	
-		
+
+
 
 	double elapsed = 0.016;
 	while (isRunning)
 	{
-			
-		// process inputs -> process behaviors -> calculate velocities -> move entities -> resolve collisions -> render frame
 		auto begin = std::chrono::high_resolution_clock::now();
-		
+
+		// process inputs -> process behaviors -> calculate velocities -> move entities -> resolve collisions -> render frame
+
+
 		for (auto i = Input::keysPressed.begin(); i != Input::keysPressed.end(); i++)
 		{
 			i->second = false;
@@ -1466,41 +1662,41 @@ int main()
 				break;
 			}
 
-			
+
 		}
-		
+
 		ECS::System::UpdateButtons();
 		game.Loop(elapsed);
 		ECS::System::UpdatePhysics(elapsed);
 		ECS::System::UpdateAnimationFrames(elapsed);
+		ECS::System::UpdateAudio();
 		ECS::System::Move(elapsed);
 		ECS::System::Collide();
 		ECS::System::SyncButtonPositions();
 		SDL_SetRenderDrawColor(window.GetRenderer(), 135, 197, 255, SDL_ALPHA_OPAQUE);
-		
+
 
 
 		game.PrepareFrame(elapsed);
 		SDL_RenderClear(window.GetRenderer());
-		ECS::System::Draw(game.camera_position->x, game.camera_position->y,	game.window->width, game.window->height);
-		
-		
+		ECS::System::Draw(game.camera_position->x, game.camera_position->y, game.window->width, game.window->height);
+
+
 		// remove this later
 		ECS::System::DrawColliders(game.camera_position->x, game.camera_position->y);
-
 
 		SDL_RenderPresent(window.GetRenderer());
 
 		auto end = std::chrono::high_resolution_clock::now();
 		std::chrono::duration<double> deltaTime = end - begin;
-		std::cout << "FPS: " << 1.0 / deltaTime.count() << "\n";
+
+		int fps = 1.0 / deltaTime.count();
+		std::cout << "FPS: " << fps << "\n";
 		elapsed = (deltaTime.count());
-
-		
 	}
-
-	SDL_Quit();
-	return 0;  
+		SDL_Quit();
+		return 0;
+	
 }
 
 
