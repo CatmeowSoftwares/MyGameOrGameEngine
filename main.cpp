@@ -64,68 +64,40 @@ std::unordered_map<SDL_Scancode, bool> Input::keysPressed;
 std::unordered_map<SDL_Scancode, bool> Input::keysDown;
 std::unordered_map<SDL_MouseButtonFlags, bool> Input::mousePressed;
 std::unordered_map<SDL_MouseButtonFlags, bool> Input::mouseDown;
-class TextureManager
-{
-public:
-	static SDL_Surface* LoadSurface(std::string path, std::string mode = "r")
-	{
-		return IMG_LoadPNG_IO(SDL_IOFromFile(path.c_str(), mode.c_str()));
-	}
 
-	static SDL_Texture* Load(SDL_Renderer* renderer, std::string path)
-	{
-		return IMG_LoadTexture(renderer, path.c_str());
-	}
-
-
-
-	static void Draw(SDL_Renderer* renderer, SDL_Texture* texture, int x, int y, double angle = 0.0, const SDL_FPoint* center = nullptr, SDL_FRect* srcRect = nullptr, SDL_FRect* dstRect = nullptr, SDL_FlipMode flipMode = SDL_FLIP_NONE)
-	{
-		float textureWidth, textureHeight;
-		SDL_GetTextureSize(texture, &textureWidth, &textureHeight);												
-		SDL_RenderTextureRotated(renderer, texture, srcRect, dstRect, angle, center, flipMode);
-	}
-};
 
 class Window
-// REPLACE WITH OPENGL OR VULKAN WHEN POSSIBLE SO I CAN USE SHADERS
-{	
-	SDL_Window* window = nullptr;
-	SDL_Renderer* renderer = nullptr;
+	// REPLACE WITH OPENGL OR VULKAN WHEN POSSIBLE SO I CAN USE SHADERS
+{
+	static SDL_Window* window;
+	static SDL_Renderer* renderer;
 
 
 	static bool isRunning;
 public:
 
-	int width = 0;
-	int height = 0;
+	static int width;
+	static int height;
 
 	static void ForceQuit()
 	{
 		isRunning = false;
 	}
-	SDL_Renderer* GetRenderer()
+	static SDL_Renderer* GetRenderer()
 	{
 		return renderer;
 	}
 
-	SDL_Window* GetWindow()
+	static SDL_Window* GetWindow()
 	{
 		return window;
 	}
 
-
-	void Draw()
-	{
-
-	}
-
-
-	int GetWindowWidth()
+	static int GetWindowWidth()
 	{
 		return width;
 	}
-	int GetWindowHeight()
+	static int GetWindowHeight()
 	{
 		return height;
 	}
@@ -136,7 +108,11 @@ public:
 		this->width = width;
 		this->height = height;
 		SDL_CreateWindowAndRenderer(title.c_str(), width, height, SDL_WINDOW_RESIZABLE, &window, &renderer);
-		SDL_SetWindowIcon(window, TextureManager::LoadSurface("assets/textures/icon.png"));
+		SDL_GetWindowSize(window, &this->width, &this->height);
+	}
+	void SetWindowIcon(SDL_Surface* icon)
+	{
+		SDL_SetWindowIcon(window, icon);
 	}
 
 
@@ -145,7 +121,50 @@ public:
 		isRunning = false;
 	}
 };
+SDL_Window* Window::window;
+SDL_Renderer* Window::renderer;
+int Window::width;
+int Window::height;
 bool Window::isRunning = true;
+
+class Camera
+{
+	static Camera* camera;
+	SDL_Rect* rect;
+
+public:
+	static Camera* GetCurrentCamera()
+	{
+		return camera;
+	}
+	
+};
+
+
+class TextureManager
+{
+public:
+	static SDL_Surface* LoadSurface(std::string path, std::string mode = "r")
+	{
+		return IMG_LoadPNG_IO(SDL_IOFromFile(path.c_str(), mode.c_str()));
+	}
+
+	static SDL_Texture* Load(std::string path)
+	{
+		return IMG_LoadTexture(Window::GetRenderer(), path.c_str());
+	}
+
+
+
+	static void Draw(SDL_Texture* texture, int x, int y, double angle = 0.0, const SDL_FPoint* center = nullptr, SDL_FRect* srcRect = nullptr, SDL_FRect* dstRect = nullptr, SDL_FlipMode flipMode = SDL_FLIP_NONE)
+	{
+		float textureWidth, textureHeight;
+		SDL_GetTextureSize(texture, &textureWidth, &textureHeight);												
+		SDL_RenderTextureRotated(Window::GetRenderer(), texture, srcRect, dstRect, angle, center, flipMode);
+	}
+};
+
+
 
 std::string printBool(bool value)
 {
@@ -181,6 +200,18 @@ public:
 		{
 			SDL_Texture* texture;
 			int z = 0;
+			int w;
+			int h;
+			Sprite(SDL_Texture* texture, int z = 0)
+			{
+				this->texture = texture;
+				this->z = z;
+				float _w;
+				float _h;
+				SDL_GetTextureSize(texture, & _w, & _h);
+				this->w = (int)_w;
+				this->h = (int)_h;
+			}
 		};	
 		struct Rotatable
 		{
@@ -232,6 +263,25 @@ public:
 			float x = 1.0f;
 			float y = 1.0f;;
 		};
+		struct UI
+		{
+			bool visible = false;
+		};
+		struct UISprite
+		{
+			SDL_Texture* texture;
+			int w;
+			int h;
+			UISprite(SDL_Texture* texture)
+			{
+				this->texture = texture;
+				float _w;
+				float _h;
+				SDL_GetTextureSize(texture, &_w, &_h);
+				this->w = (int)_w;
+				this->h = (int)_h;
+			}
+		};
 
 		struct Button
 		{
@@ -259,6 +309,7 @@ public:
 				this->max = max;
 			}
 		};
+
 		struct Audio
 		{
 			SDL_AudioStream* stream;
@@ -270,29 +321,28 @@ public:
 	public:
 		static void Move(double elapsed)
 		{
-			auto& positions = Components<Component::Position>::GetComponentStorage();
-			const auto& velocities = Components<Component::Velocity>::GetComponentStorage();
+			auto& positions = Components<Component::Position>::GetStorage();
+			const auto& velocities = Components<Component::Velocity>::GetStorage();
 
 			for (auto& i : positions)										
 			{
 				int id = i.first;
-				if (velocities.find(id) != velocities.end())
+				auto& pos = i.second;
+				if (Component::Velocity* vel = Entity::GetComponent<Component::Velocity>(id))
 				{
-					auto& pos = positions.find(id)->second;
-					auto& vel = velocities.find(id)->second;
-					pos.x += vel.x * elapsed;
-					pos.y += vel.y * elapsed;
+					pos.x += vel->x * elapsed;
+					pos.y += vel->y * elapsed;
 				}
 			}
 		}
-		static void Draw(SDL_Renderer* renderer, int camX = 0, int camY = 0, int camW = 0, int camH = 0)
+		static void Draw(int camX = 0, int camY = 0, int camW = 0, int camH = 0)
 		{
 
-			const auto& sprites = Components<Component::Sprite>::GetComponentStorage();
-			const auto& positions = Components<Component::Position>::GetComponentStorage();
-			const auto& parallaxes = Components<Component::Parallax>::GetComponentStorage();
-			const auto& animations = Components<Component::Animation>::GetComponentStorage();
-			const auto& rotatables = Components<Component::Rotatable>::GetComponentStorage();
+			const auto& sprites = Components<Component::Sprite>::GetStorage();
+			const auto& positions = Components<Component::Position>::GetStorage();
+			const auto& parallaxes = Components<Component::Parallax>::GetStorage();
+			const auto& animations = Components<Component::Animation>::GetStorage();
+			const auto& rotatables = Components<Component::Rotatable>::GetStorage();
 
 			
 			std::vector<std::pair<int, Component::Sprite>> sortedSprites;
@@ -307,12 +357,24 @@ public:
 			
 			for (auto& sprite : sortedSprites)
 			{
+
+
+
 				int entity = sprite.first;
-				int x = positions.find(entity)->second.x;
-				int y = positions.find(entity)->second.y;
-				float w;
-				float h;
-				SDL_GetTextureSize(sprite.second.texture, &w, &h);
+				
+				auto it = positions.find(entity);
+				int x = 0;
+				int y = 0;
+				if (it != positions.end())
+				{
+					x = it->second.x;
+					y = it->second.y;
+				}
+				
+
+
+				float w = sprite.second.w;
+				float h = sprite.second.h;
 
 				float parallaxX = 1.0f;
 				float parallaxY = 1.0f;
@@ -387,7 +449,114 @@ public:
 					point = rotate.center;
 				}
 
-				TextureManager::Draw(renderer, sprite.second.texture, 0, 0, angel, point, &srcRect, &dstRect);
+				TextureManager::Draw(sprite.second.texture, 0, 0, angel, point, &srcRect, &dstRect);
+
+			}
+		}
+		static void DrawUI(int camX = 0, int camY = 0, int camW = 0, int camH = 0)
+		{
+
+			const auto& sprites = Components<Component::Sprite>::GetStorage();
+			const auto& positions = Components<Component::Position>::GetStorage();
+			const auto& animations = Components<Component::Animation>::GetStorage();
+			const auto& rotatables = Components<Component::Rotatable>::GetStorage();
+
+
+			std::vector<std::pair<int, Component::Sprite>> sortedSprites;
+			for (auto& i : sprites)
+			{
+				std::pair<int, Component::Sprite> sprite = i;
+				sortedSprites.push_back(sprite);
+			}
+
+			std::sort(sortedSprites.begin(), sortedSprites.end(), [](const std::pair<int, Component::Sprite>& a, const std::pair<int, Component::Sprite>& b) {return a.second.z < b.second.z;});
+
+
+			for (auto& sprite : sortedSprites)
+			{
+
+
+
+				int entity = sprite.first;
+
+				auto it = positions.find(entity);
+				int x = 0;
+				int y = 0;
+				if (it != positions.end())
+				{
+					x = it->second.x;
+					y = it->second.y;
+				}
+
+
+
+				float w = sprite.second.w;
+				float h = sprite.second.h;
+
+
+
+				float frameWidth = w;
+				float frameHeight = h;
+				auto animation = animations.find(entity);
+				SDL_FRect srcRect;
+				SDL_FRect dstRect;
+				if (animation != animations.end())
+				{
+					auto& anim = animation->second;
+
+					frameWidth = w / anim.maxFrames;
+					frameHeight = h / anim.totalRows;
+
+					srcRect.x = frameWidth * anim.frame;
+					srcRect.y = frameHeight * anim.row;
+					srcRect.w = frameWidth;
+					srcRect.h = frameHeight;
+
+					dstRect.x = (float)floor(x);
+					dstRect.y = (float)floor(y);
+					dstRect.w = srcRect.w;
+					dstRect.h = srcRect.h;
+				}
+
+				else
+				{
+					srcRect.x = 0;
+					srcRect.y = 0;
+					srcRect.w = w;
+					srcRect.h = h;
+
+
+					dstRect.x = (float)floor(x);
+					dstRect.y = (float)floor(y);
+					dstRect.w = w;
+					dstRect.h = h;
+				}
+
+
+				if (
+					(dstRect.x + dstRect.w < 0) ||
+					(dstRect.y + dstRect.h < 0) ||
+					(dstRect.x > camW) ||
+					(dstRect.y > camH)
+					)
+				{
+					continue;
+				}
+
+
+
+
+				auto rotatable = rotatables.find(entity);
+				double angel = 0.0;
+				SDL_FPoint* point = nullptr;
+				if (rotatable != rotatables.end())
+				{
+					auto& rotate = rotatable->second;
+					angel = rotate.angle;
+					point = rotate.center;
+				}
+
+				TextureManager::Draw(sprite.second.texture, 0, 0, angel, point, &srcRect, &dstRect);
 
 			}
 		}
@@ -395,8 +564,8 @@ public:
 
 		static void UpdatePhysics(double elapsed)
 		{
-			auto& physics = Components<Component::Physics>::GetComponentStorage();
-			auto& velocities = Components<Component::Velocity>::GetComponentStorage();
+			auto& physics = Components<Component::Physics>::GetStorage();
+			auto& velocities = Components<Component::Velocity>::GetStorage();
 
 			for (auto& i : physics)
 			{
@@ -432,7 +601,7 @@ public:
 
 		static void UpdateAnimationFrames(double elapsed)
 		{
-			auto& animations = Components<Component::Animation>::GetComponentStorage();
+			auto& animations = Components<Component::Animation>::GetStorage();
 			for (auto& i : animations)
 			{
 				auto& anim = i.second;
@@ -458,8 +627,8 @@ public:
 		}
 		static void SyncColliders()
 		{
-			auto& colliders = Components<Component::Collider>::GetComponentStorage();
-			const auto& positions = Components<Component::Position>::GetComponentStorage();
+			auto& colliders = Components<Component::Collider>::GetStorage();
+			const auto& positions = Components<Component::Position>::GetStorage();
 			for (auto& i : colliders)
 			{
 				int entity = i.first;
@@ -479,10 +648,10 @@ public:
 
 		static void Collide()
 		{
-			auto& colliders = Components<Component::Collider>::GetComponentStorage();
-			auto& positions = Components<Component::Position>::GetComponentStorage();
-			auto& velocities = Components<Component::Velocity>::GetComponentStorage();
-			auto& physics = Components<Component::Physics>::GetComponentStorage();
+			auto& colliders = Components<Component::Collider>::GetStorage();
+			auto& positions = Components<Component::Position>::GetStorage();
+			auto& velocities = Components<Component::Velocity>::GetStorage();
+			auto& physics = Components<Component::Physics>::GetStorage();
 
 			for (auto& kv : physics)
 			{
@@ -632,9 +801,8 @@ public:
 
 		static SDL_FRect CreateCollidersFromTexture(SDL_Texture* texture, double x, double y)
 		{
-			float w;
-			float h;
-			SDL_GetTextureSize(texture, &w, &h);
+			float w = texture->w;
+			float h = texture->h;
 			SDL_FRect rect;
 			rect.x = x;
 			rect.y = y;
@@ -643,36 +811,36 @@ public:
 			return rect;	
 		}
 
-		static SDL_Texture* MakeRectangleTexture(SDL_Renderer* renderer, int w, int h, Uint8 r, Uint8 g, Uint8 b, Uint8 a = 255)
+		static SDL_Texture* MakeRectangleTexture(int w, int h, Uint8 r, Uint8 g, Uint8 b, Uint8 a = 255)
 		{
-			SDL_Texture* texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_TARGET, w, h);
+			SDL_Texture* texture = SDL_CreateTexture(Window::GetRenderer(), SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_TARGET, w, h);
 			SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
-			SDL_SetRenderTarget(renderer, texture);
-			SDL_SetRenderDrawColor(renderer, r, g, b, a);
-			SDL_RenderClear(renderer);
-			SDL_SetRenderTarget(renderer, nullptr);
+			SDL_SetRenderTarget(Window::GetRenderer(), texture);
+			SDL_SetRenderDrawColor(Window::GetRenderer(), r, g, b, a);
+			SDL_RenderClear(Window::GetRenderer());
+			SDL_SetRenderTarget(Window::GetRenderer(), nullptr);
 			return texture;
 		}
 
-		static SDL_Texture* CreateCircle(SDL_Renderer* renderer, float radius, Uint8 r, Uint8 g, Uint8 b, Uint8 a = 255)
+		static SDL_Texture* CreateCircleTexture(float radius, Uint8 r, Uint8 g, Uint8 b, Uint8 a = 255)
 			{
 				int diameter = radius * 2;
 				SDL_Surface* surface = SDL_CreateSurface(diameter, diameter, SDL_PIXELFORMAT_RGBA8888);
 				SDL_FillSurfaceRect(surface, NULL, SDL_MapRGBA(SDL_GetPixelFormatDetails(surface->format), NULL, 0, 0, 0, 0));
 				int cx = (int)radius;
 				int cy = (int)radius;
-				SDL_SetRenderDrawColor(renderer, r, g, b, a);
+				SDL_SetRenderDrawColor(Window::GetRenderer(), r, g, b, a);
 				const float pi = 3.1415926535f;
 				for (float angle = 0.0f; angle < 2 * pi; angle += 0.01f) {
 					int _x = cx + (int)radius * cos(angle);
 					int _y = cy + (int)radius * sin(angle);
 					SDL_WriteSurfacePixel(surface, _x, _y, r, g, b, a);
 				}
-				SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
+				SDL_Texture* texture = SDL_CreateTextureFromSurface(Window::GetRenderer(), surface);
 				SDL_DestroySurface(surface);
 				return texture;
 			};
-		static SDL_Texture* CreateCircleFill(SDL_Renderer* renderer, float radius, Uint8 r, Uint8 g, Uint8 b, Uint8 a = 255)
+		static SDL_Texture* CreateCircleTextureFill(float radius, Uint8 r, Uint8 g, Uint8 b, Uint8 a = 255)
 		{
 			
 			int diameter = radius * 2;
@@ -683,7 +851,7 @@ public:
 			
 			int cx = (int)radius;
 			int cy = (int)radius;
-			SDL_SetRenderDrawColor(renderer, r, g, b, a);
+			SDL_SetRenderDrawColor(Window::GetRenderer(), r, g, b, a);
 			const float pi = 3.1415926535f;
 			for (int y = -radius; y <= radius; y++)
 			{
@@ -698,15 +866,15 @@ public:
 					}
 				}
 			}
-			SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
+			SDL_Texture* texture = SDL_CreateTextureFromSurface(Window::GetRenderer(), surface);
 			SDL_DestroySurface(surface);
 			return texture;
 		}
 
-		static void DrawColliders(SDL_Renderer* renderer, int camX, int camY)
+		static void DrawColliders(int camX, int camY)
 		{
-			const auto& colliders = Components<Component::Collider>::GetComponentStorage();
-			SDL_SetRenderDrawColor(renderer, 255, 0, 0, 128U);
+			const auto& colliders = Components<Component::Collider>::GetStorage();
+			SDL_SetRenderDrawColor(Window::GetRenderer(), 255, 0, 0, 128U);
 			//SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 			for (auto& i : colliders)
 			{
@@ -717,7 +885,7 @@ public:
 					SDL_FRect rect = i.second.rect;
 					rect.x -= camX;
 					rect.y -= camY;
-					SDL_RenderRect(renderer, &rect);
+					SDL_RenderRect(Window::GetRenderer(), &rect);
 				}
 			}
 		}
@@ -725,7 +893,7 @@ public:
 
 		static void UpdateButtons()
 		{
-			auto& buttons = Components<Component::Button>::GetComponentStorage();
+			auto& buttons = Components<Component::Button>::GetStorage();
 			for (auto& i : buttons)
 			{
 				int entity = i.first;
@@ -765,8 +933,8 @@ public:
 
 		static void SyncButtonPositions()
 		{
-			auto& buttons = Components<Component::Button>::GetComponentStorage();
-			auto& positions = Components<Component::Position>::GetComponentStorage();
+			auto& buttons = Components<Component::Button>::GetStorage();
+			auto& positions = Components<Component::Position>::GetStorage();
 			for (auto& i : buttons)
 			{
 				auto entity = i.first;
@@ -793,7 +961,7 @@ public:
 	{
 	public:
 		static std::unordered_map<int, T> storage;
-		static std::unordered_map<int, T>& GetComponentStorage()
+		static std::unordered_map<int, T>& GetStorage()
 		{
 			return storage;
 		}
@@ -829,7 +997,7 @@ public:
 		template<typename T>
 		static void AddComponent(int entity, T component)
 		{
-			std::unordered_map<int, T>& storage = Components<T>::GetComponentStorage();
+			std::unordered_map<int, T>& storage = Components<T>::GetStorage();
 			storage.insert_or_assign(entity, component);
 		};
 		template<typename T>
@@ -847,7 +1015,7 @@ public:
 		template<typename T>
 		static T* GetComponent(int entity)
 		{
-			auto& storage = Components<T>::GetComponentStorage();
+			auto& storage = Components<T>::GetStorage();
 			auto it = storage.find(entity);
 			if (it != storage.end())
 			{
@@ -904,10 +1072,10 @@ public:
 			SDL_ResumeAudioStreamDevice(stream);
 
 		}
-		int CreateFloor(SDL_Renderer* renderer, int x, int y, int w, int h)
+		int CreateFloor(int x, int y, int w, int h)
 		{
 			int ground = Entity::CreateEntity();
-			auto ground_texture = System::MakeRectangleTexture(renderer, w, h, 128, 0, 128);
+			auto ground_texture = System::MakeRectangleTexture(w, h, 128, 0, 128);
 			SDL_FRect ground_rect = { x, y, w, h };
 
 			auto ground_collider = System::CreateCollidersFromTexture(ground_texture, ground_rect.x, ground_rect.y);
@@ -917,10 +1085,10 @@ public:
 			return ground;
 
 		}
-		int CreateRange(SDL_Renderer* renderer, float radius, int x, int y, uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255U)
+		int CreateRange(float radius, int x, int y, uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255U)
 		{
 			int range = Entity::CreateEntity();
-			SDL_Texture* texture = System::CreateCircleFill(renderer, radius, r, g, b, a);
+			SDL_Texture* texture = System::CreateCircleTextureFill(radius, r, g, b, a);
 			SDL_Rect rect;
 			rect.x = x;
 			rect.y = y;
@@ -933,7 +1101,7 @@ public:
 			Entity::AddComponent(range, Component::Button{ rect });
 			return range;
 		}
-		int CreateSlider(SDL_Renderer* renderer)
+		int CreateSlider()
 		{
 
 		}
@@ -942,7 +1110,7 @@ public:
 
 		}
 
-		int CreateButton(SDL_Renderer* renderer, int x, int y, int w, int h, uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255U)
+		int CreateButton(int x, int y, int w, int h, uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255U)
 		{
 			int button = Entity::CreateEntity();
 			SDL_Rect rect;
@@ -950,7 +1118,7 @@ public:
 			rect.y = y;
 			rect.w = w;
 			rect.h = h;
-			SDL_Texture* texture = System::MakeRectangleTexture(renderer, w, h, r, g, b, a);
+			SDL_Texture* texture = System::MakeRectangleTexture(w, h, r, g, b, a);
 
 			Entity::AddComponent(button, Component::Sprite{ texture, 69420 });
 			Entity::AddComponent(button, Component::Position{ (double)x, (double)y });
@@ -959,7 +1127,7 @@ public:
 			return button;
 		}
 
-		int CreateLabel(SDL_Renderer* renderer, std::string string, int x, int y, uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255U)
+		int CreateLabel(std::string string, int x, int y, uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255U)
 		{
 			int label = Entity::CreateEntity();
 			SDL_Color color = { r, g, b, a };
@@ -969,7 +1137,7 @@ public:
 
 
 			surface = TTF_RenderText_Blended(font, string.c_str(), 0, color);
-			texture = SDL_CreateTextureFromSurface(renderer, surface);
+			texture = SDL_CreateTextureFromSurface(Window::GetRenderer(), surface);
 			SDL_DestroySurface(surface);
 
 			float w, h;
@@ -982,7 +1150,7 @@ public:
 			return label;
 		}
 
-		int CreateButtonWithLabel(SDL_Renderer* renderer, std::string string, int x, int y, int w, int h, uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255U)
+		int CreateButtonWithLabel(std::string string, int x, int y, int w, int h, uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255U)
 		{
 			int button = Entity::CreateEntity();
 			int label = Entity::CreateEntity();
@@ -992,12 +1160,12 @@ public:
 			SDL_Color lcolor = { 255U, 255U, 255U, 255U };
 			SDL_Surface* surface = nullptr;
 			SDL_Texture* ltexture = nullptr;
-			SDL_Texture* btexture = System::MakeRectangleTexture(renderer, buttonRect.w, buttonRect.h, r, g, b, a);
+			SDL_Texture* btexture = System::MakeRectangleTexture(buttonRect.w, buttonRect.h, r, g, b, a);
 
 
 
 			surface = TTF_RenderText_Blended(font, string.c_str(), 0, lcolor);
-			ltexture = SDL_CreateTextureFromSurface(renderer, surface);
+			ltexture = SDL_CreateTextureFromSurface(Window::GetRenderer(), surface);
 			SDL_DestroySurface(surface);
 
 			float lw, lh;
@@ -1018,14 +1186,14 @@ public:
 			Entity::AddComponent(button, Component::Button{ buttonRect });
 			return button;
 		}
-		void Init(SDL_Renderer* renderer)
+		void Init()
 		{
 			PlayAudio("assets/audio/music/ForestDayMorning.wav");
 			int sun = Entity::CreateEntity();
-			Entity::AddComponent(sun, Component::Sprite{TextureManager::Load(renderer, "assets/textures/sun.png"), -420});
+			Entity::AddComponent(sun, Component::Sprite{TextureManager::Load("assets/textures/sun.png"), -420});
 			Entity::AddComponent(sun, Component::Position{});
 			Entity::AddComponent(sun, Component::Parallax{0.00000001, 0.0000001 });
-			CreateClouds(420, renderer);
+			CreateClouds(420);
 
 
 			/*
@@ -1042,18 +1210,18 @@ public:
 			*/
 
 
-			CreateFloor(renderer, 0, 128, 32, 8);
-			CreateFloor(renderer, 64, 64, 32, 8);
-			CreateFloor(renderer, 192, 32, 32, 8);
-			CreateFloor(renderer, 256, 0, 32, 8);
-			CreateFloor(renderer, 128, -64, 32, 8);
-			CreateFloor(renderer, 64, -64, 32, 8);
-			CreateFloor(renderer, 0, -128, 32, 8);
+			CreateFloor(0, 128, 32, 8);
+			CreateFloor(64, 64, 32, 8);
+			CreateFloor(192, 32, 32, 8);
+			CreateFloor(256, 0, 32, 8);
+			CreateFloor(128, -64, 32, 8);
+			CreateFloor(64, -64, 32, 8);
+			CreateFloor(0, -128, 32, 8);
 
 
-			buttonId = CreateButtonWithLabel(renderer, "Meow", 100, 100, 200, 100, 255 / 2, 255 / 2, 255 / 2);
+			buttonId = CreateButtonWithLabel("Meow", 100, 100, 200, 100, 255 / 2, 255 / 2, 255 / 2);
 
-			range = CreateRange(renderer, 10.0f, 300, 300, 0, 0, 0, 255);
+			range = CreateRange(10.0f, 300, 300, 0, 0, 0, 255);
 			range_position = Entity::GetComponent<Component::Position>(range);
 			Entity::AddComponent(camera, Component::Position{0, 0});
 			
@@ -1064,7 +1232,7 @@ public:
 			*/
 			Entity::AddComponent(player, Component::Position{ 0, 0 });
 			Entity::AddComponent(player, Component::Velocity{ 0, 0 });
-			Entity::AddComponent(player, Component::Sprite{ TextureManager::Load(renderer, "assets/textures/player_spritesheet.png"), 420 });
+			Entity::AddComponent(player, Component::Sprite{ TextureManager::Load("assets/textures/player_spritesheet.png"), 420 });
 			Entity::AddComponent(player, Component::Animation{ 0, 0.0f, 100.0f, true, {}, 1.0f, 0, 0, 8 });
 			Entity::AddComponent(player, Component::Physics{ 100.0, 0.0f});
 			Entity::AddComponent(player, Component::Rotatable{});
@@ -1082,7 +1250,7 @@ public:
 			button = Entity::GetComponent<Component::Button>(buttonId);
 		}
 		double speed;
-		void Loop(SDL_Renderer* renderer, double elapsed)
+		void Loop(double elapsed)
 		{
 			range_position->x = rand() % 420;																		
 			range_position->y = rand() % 420;
@@ -1167,7 +1335,7 @@ public:
 
 
 		}
-		void PrepareFrame(SDL_Renderer* renderer, double elapsed)
+		void PrepareFrame(double elapsed)
 		{
 			float textureWidth, textureHeight;
 			SDL_GetTextureSize(player_sprite->texture, &textureWidth, &textureHeight);
@@ -1181,14 +1349,14 @@ public:
 			camera_position->y = spriteCenterY - window->height / 2.0f;
 		}
 
-		void CreateClouds(int howMany, SDL_Renderer* renderer)
+		void CreateClouds(int howMany)
 		{
 			for (int i = 0; i < howMany; ++i)
 			{
 				int cloud = Entity::CreateEntity();
-				auto cloudTexture = TextureManager::Load(renderer, "assets/textures/clouds.png");
+				auto cloudTexture = TextureManager::Load("assets/textures/clouds.png");
 				SDL_SetTextureAlphaMod(cloudTexture, std::max(21, rand() % 255));
-				Entity::AddComponent(cloud, Component::Position{(double)(rand() % 420), (double)(rand() % 420) });
+				Entity::AddComponent(cloud, Component::Position{(double)(rand() % Window::GetWindowWidth()), (double)(rand() % Window::GetWindowHeight())/2 });
 				Entity::AddComponent(cloud, Component::Velocity{(double)(rand() % 21)});
 				Entity::AddComponent(cloud, Component::Sprite{ cloudTexture, -420});
 				Entity::AddComponent(cloud, Component::Parallax
@@ -1197,7 +1365,7 @@ public:
 						(float)(0.01 + static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * (0.1 - 0.01)) 
 					} 
 					);
-				Entity::AddComponent(cloud, Component::Animation{rand() % 2, 0.0f, 16777216.0f, false, "", 1.0f, rand() % 2, 2, 2});
+				Entity::AddComponent(cloud, Component::Animation{rand() % 2, 0.0f, std::numeric_limits<float>::infinity(), false, "", 1.0f, rand() % 2, 2, 2});
 				clouds.push_back(cloud);
 			}
 		}																	
@@ -1206,11 +1374,11 @@ public:
 			for (auto& i : clouds)
 			{
 				auto cloud_pos = Entity::GetComponent<Component::Position>(i);
-				if (cloud_pos->x > 1280)
+				if (cloud_pos->x > Window::GetWindowWidth())
 				{
 					auto cloud_speed = Entity::GetComponent<Component::Velocity>(i);
 					cloud_speed->x = rand() % 21;
-					cloud_pos->x = -420;
+					cloud_pos->x = -Window::GetWindowWidth();
 				}
 			}
 		}
@@ -1244,13 +1412,14 @@ int main()
 	Window window = Window();;  
 
 	window.CreateWindow("Hi!!!", 1280, 720);
+	window.SetWindowIcon(TextureManager::LoadSurface("assets/textures/icon.png"));
 
 	SDL_Event event;
 	bool isRunning = true;
 
 	ECS::Game game = ECS::Game();
 	game.window = &window;
-	game.Init(window.GetRenderer());
+	game.Init();
 
 	
 		
@@ -1301,7 +1470,7 @@ int main()
 		}
 		
 		ECS::System::UpdateButtons();
-		game.Loop(window.GetRenderer(), elapsed);
+		game.Loop(elapsed);
 		ECS::System::UpdatePhysics(elapsed);
 		ECS::System::UpdateAnimationFrames(elapsed);
 		ECS::System::Move(elapsed);
@@ -1311,13 +1480,13 @@ int main()
 		
 
 
-		game.PrepareFrame(window.GetRenderer(), elapsed);
+		game.PrepareFrame(elapsed);
 		SDL_RenderClear(window.GetRenderer());
-		ECS::System::Draw(window.GetRenderer(), game.camera_position->x, game.camera_position->y,	game.window->width, game.window->height);
+		ECS::System::Draw(game.camera_position->x, game.camera_position->y,	game.window->width, game.window->height);
 		
 		
 		// remove this later
-		ECS::System::DrawColliders(window.GetRenderer(),game.camera_position->x, game.camera_position->y);
+		ECS::System::DrawColliders(game.camera_position->x, game.camera_position->y);
 
 
 		SDL_RenderPresent(window.GetRenderer());
