@@ -102,7 +102,10 @@ public:
 		return height;
 	}
 
-
+	static void Draw(SDL_Texture* texture, int x, int y, double angle = 0.0, const SDL_FPoint* center = nullptr, SDL_FRect* srcRect = nullptr, SDL_FRect* dstRect = nullptr, SDL_FlipMode flipMode = SDL_FLIP_NONE)
+	{
+		SDL_RenderTextureRotated(renderer, texture, srcRect, dstRect, angle, center, flipMode);
+	}
 	void CreateWindow(std::string title, int width, int height)
 	{
 		this->width = width;
@@ -221,10 +224,7 @@ public:
 
 
 
-	static void Draw(SDL_Texture* texture, int x, int y, double angle = 0.0, const SDL_FPoint* center = nullptr, SDL_FRect* srcRect = nullptr, SDL_FRect* dstRect = nullptr, SDL_FlipMode flipMode = SDL_FLIP_NONE)
-	{										
-		SDL_RenderTextureRotated(Window::GetRenderer(), texture, srcRect, dstRect, angle, center, flipMode);
-	}
+	
 };
 
 
@@ -563,7 +563,7 @@ public:
 						dstRect.y = drawY;
 						dstRect.w = w;
 						dstRect.h = h;
-						TextureManager::Draw(texture, 0, 0, 0.0, NULL, &srcRect, &dstRect);
+						Window::Draw(texture, 0, 0, 0.0, NULL, &srcRect, &dstRect);
 					}
 					continue;
 				}
@@ -571,7 +571,7 @@ public:
 
 				
 			
-				TextureManager::Draw(texture, 0, 0, angel, point, &srcRect, &dstRect);
+				Window::Draw(texture, 0, 0, angel, point, &srcRect, &dstRect);
 				
 		
 
@@ -683,7 +683,7 @@ public:
 					point = rotate.center;
 				}
 
-				TextureManager::Draw(sprite.second.texture, 0, 0, angel, point, &srcRect, &dstRect);
+				Window::Draw(sprite.second.texture, 0, 0, angel, point, &srcRect, &dstRect);
 
 			}
 		}
@@ -1232,7 +1232,230 @@ public:
 		ECS::Component::Position* range_position;
 		ECS::Component::Button* button;
 
-		
+		void Init()
+		{
+
+			int mountains = Entity::CreateEntity();
+			Entity::AddComponent(mountains, Component::Parallax{ 0.01f, 0.0f, true });
+			Entity::AddComponent(mountains, Component::Position{});
+			Entity::AddComponent(mountains, Component::Sprite{ TextureManager::Load("assets/textures/doesthisevenlooklikemountains.png"), -420 });
+
+
+
+			int treesfar = Entity::CreateEntity();
+			Entity::AddComponent(treesfar, Component::Parallax{ 0.15f, 0.01f, true });
+			Entity::AddComponent(treesfar, Component::Position{});
+			Entity::AddComponent(treesfar, Component::Sprite{ TextureManager::Load("assets/textures/doesthisevenlookliketreesfromfar.png"), -1 });
+
+
+			int trees = Entity::CreateEntity();
+			Entity::AddComponent(trees, Component::Parallax{ 0.25f, 0.1f, true });
+			Entity::AddComponent(trees, Component::Position{});
+			Entity::AddComponent(trees, Component::Sprite{ TextureManager::Load("assets/textures/doesthisevenlookliketrees.png"), -1 });
+
+			int forestDay = Entity::CreateEntity();
+			Entity::AddComponent(forestDay, Component::Audio{ "assets/audio/music/ForestDayMorning.wav", true, 10.0f });
+			System::PlayAudio(forestDay);
+			int sun = Entity::CreateEntity();
+			Entity::AddComponent(sun, Component::Sprite{ TextureManager::Load("assets/textures/sun.png"), -420 });
+			Entity::AddComponent(sun, Component::Position{});
+			Entity::AddComponent(sun, Component::Parallax{ 0.00000001, 0.0000001 });
+			CreateClouds(420);
+
+
+			/*
+
+			for (int i = 0; i < 420; i++)
+			{
+				int tree = Entity::CreateEntity();
+				Entity::AddComponent(tree, Component::Sprite{ TextureManager::Load(renderer, "assets/textures/tree.png"), 1 }, Entity::sprites);
+				Entity::AddComponent(tree, Component::Position{ (double)(rand() % 420), (double)(rand() % 420) }, Entity::positions);
+				Entity::AddComponent(tree, Component::Rotatable{}, Entity::rotatables);
+				trees.push_back(tree);
+				tree_rotations[i] = Entity::GetComponent(tree, Entity::rotatables);
+			}
+			*/
+
+			/*
+			CreateFloor(0, 128, 32, 8);
+			CreateFloor(64, 64, 32, 8);
+			CreateFloor(192, 32, 32, 8);
+			CreateFloor(256, 0, 32, 8);
+			CreateFloor(128, -64, 32, 8);
+			CreateFloor(64, -64, 32, 8);
+			CreateFloor(0, -128, 32, 8);
+			*/
+
+
+
+
+
+			CreateFloor(-1000, 128, 2000, 512, 151, 107, 75, 255);
+
+			//CreateTiles(10, 0, 250);
+
+
+			//buttonId = CreateButtonWithLabel("Meow", 100, 100, 200, 100, 255 / 2, 255 / 2, 255 / 2);
+
+			//range = CreateRange(10.0f, 300, 300, 0, 0, 0, 255);
+			//range_position = Entity::GetComponent<Component::Position>(range);
+			Entity::AddComponent(camera, Component::Position{ 0, 0 });
+
+			/*
+			Entity::AddComponent(world, Component::Position{ 0, 0 }, Entity::positions);
+			Entity::AddComponent(world, Component::Sprite{ TextureManager::Load(renderer, "assets/textures/icon.png"), 69420 }, Entity::sprites);
+
+			*/
+			Entity::AddComponent(player, Component::Position{ 0, 0 });
+			Entity::AddComponent(player, Component::Velocity{ 0, 0 });
+			Entity::AddComponent(player, Component::Sprite{ TextureManager::Load("assets/textures/player_spritesheet.png"), 420 });
+			Entity::AddComponent(player, Component::Animation{ 0, 0.0f, 100.0f, true, {}, 1.0f, 0, 0, 8 });
+			Entity::AddComponent(player, Component::Physics{ 100.0, 0.0f });
+			Entity::AddComponent(player, Component::Rotatable{});
+			Entity::AddComponent(player, Component::Collider{ SDL_FRect{0, 0, 16, 32}, 8 });
+
+
+			camera_position = Entity::GetComponent<Component::Position>(camera);
+			player_position = Entity::GetComponent<Component::Position>(player);
+			player_velocity = Entity::GetComponent<Component::Velocity>(player);
+			player_sprite = Entity::GetComponent<Component::Sprite>(player);
+			player_animation = Entity::GetComponent<Component::Animation>(player);
+			player_physics = Entity::GetComponent<Component::Physics>(player);
+			player_rotation = Entity::GetComponent<Component::Rotatable>(player);
+
+			button = Entity::GetComponent<Component::Button>(buttonId);
+		}
+		void Loop(double elapsed)
+		{
+			// process inputs -> process behaviors -> calculate velocities -> move entities -> resolve collisions -> render frame
+			MoveClouds();
+
+			double player_speed = 400.0;
+
+			player_velocity->x = 0.0f;
+			player_animation->state = "Idle";
+
+			if (Input::IsKeyDown(SDL_SCANCODE_A))
+			{
+				player_velocity->x = -player_speed;
+			}
+			else if (Input::IsKeyDown(SDL_SCANCODE_D))
+			{
+				player_velocity->x = player_speed;
+			}
+
+
+
+			if (Input::IsKeyPressed(SDL_SCANCODE_SPACE) && player_physics->onFloor)
+			{
+				player_velocity->y = -640;
+				player_physics->onFloor = false;
+			}
+
+
+
+
+			if (Input::IsKeyDown(SDL_SCANCODE_W) || Input::IsKeyDown(SDL_SCANCODE_A) || Input::IsKeyDown(SDL_SCANCODE_S) || Input::IsKeyDown(SDL_SCANCODE_D))
+			{
+				player_animation->state = "Walking";
+			}
+
+
+
+
+			if (player_animation->state == "Idle")
+			{
+				//player_animation->x = player_animation->frame * player_sprite->texture->w/player_animation->maxFrames;
+				player_animation->row = 0;
+				player_animation->maxFrames = 8;
+			}
+			else if (player_animation->state == "Walking")
+			{
+				//player_animation->x = player_animation->frame * player_sprite->texture->w / player_animation->maxFrames;
+				player_animation->row = 1;
+				player_animation->maxFrames = 8;
+			}
+
+			if (Input::IsKeyPressed(SDL_SCANCODE_R))
+			{
+				player_position->x = 0.0;
+				player_position->y = 0.0;
+			}
+
+
+			//player_rotation->angle += 1;
+			for (auto& tree_rotation : tree_rotations)
+			{
+				tree_rotation.second->angle += rand() % 10;
+			}
+
+
+			if (button != nullptr)
+			{
+				if (button->pressed)
+				{
+					std::cout << "Meow\n";
+				}
+			}
+			float textureWidth, textureHeight;
+			SDL_GetTextureSize(player_sprite->texture, &textureWidth, &textureHeight);
+
+			float frameWidth = textureWidth / player_animation->maxFrames;
+			float frameHeight = textureHeight / player_animation->totalRows;
+
+			float spriteCenterX = player_position->x + frameWidth / 2.0f;
+			float spriteCenterY = player_position->y + frameHeight / 2.0f;
+			camera_position->x = spriteCenterX - window->width / 2.0f;
+			camera_position->y = spriteCenterY - window->height / 2.0f;
+
+
+
+
+		}
+		void PrepareFrame(double elapsed)
+		{
+			float textureWidth, textureHeight;
+			SDL_GetTextureSize(player_sprite->texture, &textureWidth, &textureHeight);
+
+			float frameWidth = textureWidth / player_animation->maxFrames;
+			float frameHeight = textureHeight / player_animation->totalRows;
+
+			float spriteCenterX = player_position->x + frameWidth / 2.0f;
+			float spriteCenterY = player_position->y + frameHeight / 2.0f;
+			camera_position->x = spriteCenterX - window->width / 2.0f;
+			camera_position->y = spriteCenterY - window->height / 2.0f;
+		}
+
+
+
+
+
+
+		void CreateTiles(int howMany, int startX, int startY)
+		{
+			for (int x = startX; x < howMany + startX; x++)
+			{
+				for (int y = startY; y < howMany + startY; y++)
+				{
+					int tile = Entity::CreateEntity();
+					SDL_FRect rect = { x, y, 1, 1 };
+					SDL_Texture* texture = TextureManager::MakeRectangleTexture(1, 1, 151, 107, 75, 255);
+					Entity::AddComponent(tile, Component::Position{ (double)x, (double)y });
+					Entity::AddComponent(tile, Component::Collider{ rect, 0, 0, true });
+					Entity::AddComponent(tile, Component::Sprite{ texture });
+
+				}
+			}
+		}
+
+
+
+
+
+
+
+
+
 		void PlayAudio(std::string path)
 		{
 			SDL_AudioSpec spec;
@@ -1360,189 +1583,7 @@ public:
 			Entity::AddComponent(button, Component::Button{ buttonRect });
 			return button;
 		}
-		void Init()
-		{
 		
-			int mountains = Entity::CreateEntity();
-			Entity::AddComponent(mountains, Component::Parallax{0.01f, 0.0f, true});
-			Entity::AddComponent(mountains, Component::Position{});
-			Entity::AddComponent(mountains, Component::Sprite{ TextureManager::Load("assets/textures/doesthisevenlooklikemountains.png"), -420 });
-
-
-
-			int treesfar = Entity::CreateEntity();
-			Entity::AddComponent(treesfar, Component::Parallax{ 0.15f, 0.01f, true });
-			Entity::AddComponent(treesfar, Component::Position{});
-			Entity::AddComponent(treesfar, Component::Sprite{ TextureManager::Load("assets/textures/doesthisevenlookliketreesfromfar.png"), -1 });
-
-
-			int trees = Entity::CreateEntity();
-			Entity::AddComponent(trees, Component::Parallax{ 0.25f, 0.1f, true });
-			Entity::AddComponent(trees, Component::Position{});
-			Entity::AddComponent(trees, Component::Sprite{ TextureManager::Load("assets/textures/doesthisevenlookliketrees.png"), -1 });
-
-			int forestDay = Entity::CreateEntity();
-			Entity::AddComponent(forestDay, Component::Audio{ "assets/audio/music/ForestDayMorning.wav", true, 10.0f});
-			System::PlayAudio(forestDay);
-			int sun = Entity::CreateEntity();
-			Entity::AddComponent(sun, Component::Sprite{TextureManager::Load("assets/textures/sun.png"), -420});
-			Entity::AddComponent(sun, Component::Position{});
-			Entity::AddComponent(sun, Component::Parallax{0.00000001, 0.0000001 });
-			CreateClouds(420);
-
-
-			/*
-			
-			for (int i = 0; i < 420; i++)
-			{
-				int tree = Entity::CreateEntity();
-				Entity::AddComponent(tree, Component::Sprite{ TextureManager::Load(renderer, "assets/textures/tree.png"), 1 }, Entity::sprites);
-				Entity::AddComponent(tree, Component::Position{ (double)(rand() % 420), (double)(rand() % 420) }, Entity::positions);
-				Entity::AddComponent(tree, Component::Rotatable{}, Entity::rotatables);
-				trees.push_back(tree);
-				tree_rotations[i] = Entity::GetComponent(tree, Entity::rotatables);
-			}
-			*/
-
-			/*
-			CreateFloor(0, 128, 32, 8);
-			CreateFloor(64, 64, 32, 8);
-			CreateFloor(192, 32, 32, 8);
-			CreateFloor(256, 0, 32, 8);
-			CreateFloor(128, -64, 32, 8);
-			CreateFloor(64, -64, 32, 8);
-			CreateFloor(0, -128, 32, 8);
-			*/
-			CreateFloor(-1000, 128, 2000, 512, 151, 107, 75, 255);
-			buttonId = CreateButtonWithLabel("Meow", 100, 100, 200, 100, 255 / 2, 255 / 2, 255 / 2);
-
-			range = CreateRange(10.0f, 300, 300, 0, 0, 0, 255);
-			range_position = Entity::GetComponent<Component::Position>(range);
-			Entity::AddComponent(camera, Component::Position{0, 0});
-			
-			/*
-			Entity::AddComponent(world, Component::Position{ 0, 0 }, Entity::positions);
-			Entity::AddComponent(world, Component::Sprite{ TextureManager::Load(renderer, "assets/textures/icon.png"), 69420 }, Entity::sprites);
-
-			*/
-			Entity::AddComponent(player, Component::Position{ 0, 0 });
-			Entity::AddComponent(player, Component::Velocity{ 0, 0 });
-			Entity::AddComponent(player, Component::Sprite{ TextureManager::Load("assets/textures/player_spritesheet.png"), 420 });
-			Entity::AddComponent(player, Component::Animation{ 0, 0.0f, 100.0f, true, {}, 1.0f, 0, 0, 8 });
-			Entity::AddComponent(player, Component::Physics{ 100.0, 0.0f});
-			Entity::AddComponent(player, Component::Rotatable{});
-			Entity::AddComponent(player, Component::Collider{ SDL_FRect{0, 0, 16, 32}, 8});
-
-			
-			camera_position = Entity::GetComponent<Component::Position>(camera);
-			player_position = Entity::GetComponent<Component::Position>(player);
-			player_velocity = Entity::GetComponent<Component::Velocity>(player);
-			player_sprite = Entity::GetComponent<Component::Sprite>(player);
-			player_animation = Entity::GetComponent<Component::Animation>(player);
-			player_physics = Entity::GetComponent<Component::Physics>(player);
-			player_rotation = Entity::GetComponent<Component::Rotatable>(player);
-
-			button = Entity::GetComponent<Component::Button>(buttonId);
-		}
-		double speed;
-		void Loop(double elapsed)
-		{
-			range_position->x = rand() % 420;																		
-			range_position->y = rand() % 420;
-			// process inputs -> process behaviors -> calculate velocities -> move entities -> resolve collisions -> render frame
-			MoveClouds();
-
-			double player_speed = 400.0;
-
-			player_velocity->x = 0.0f;
-			player_animation->state = "Idle";
-
-			if (Input::IsKeyDown(SDL_SCANCODE_A))
-			{
-				player_velocity->x = -player_speed;
-			}
-			else if (Input::IsKeyDown(SDL_SCANCODE_D))
-			{
-				player_velocity->x = player_speed;
-			}
-
-
-
-			if (Input::IsKeyPressed(SDL_SCANCODE_SPACE) && player_physics->onFloor)
-			{
-				player_velocity->y = -640;
-				player_physics->onFloor = false;
-			}
-
-
-
-
-			if (Input::IsKeyDown(SDL_SCANCODE_W) || Input::IsKeyDown(SDL_SCANCODE_A) || Input::IsKeyDown(SDL_SCANCODE_S) || Input::IsKeyDown(SDL_SCANCODE_D))
-			{
-				player_animation->state = "Walking";
-			}
-
-
-
-
-			if (player_animation->state == "Idle")
-			{
-				//player_animation->x = player_animation->frame * player_sprite->texture->w/player_animation->maxFrames;
-				player_animation->row = 0;
-				player_animation->maxFrames = 8;
-			}
-			else if (player_animation->state == "Walking")
-			{
-				//player_animation->x = player_animation->frame * player_sprite->texture->w / player_animation->maxFrames;
-				player_animation->row = 1;
-				player_animation->maxFrames = 8;
-			}
-
-			if (Input::IsKeyPressed(SDL_SCANCODE_R))
-			{
-				player_position->x = 0.0;
-				player_position->y = 0.0;
-			}
-
-
-			//player_rotation->angle += 1;
-			for (auto& tree_rotation : tree_rotations)
-			{
-				tree_rotation.second->angle += rand() % 10;
-			}
-
-			if (button->pressed)
-			{
-				std::cout << "Meow\n";
-			}
-			float textureWidth, textureHeight;
-			SDL_GetTextureSize(player_sprite->texture,  & textureWidth, & textureHeight);
-
-			float frameWidth = textureWidth / player_animation->maxFrames;
-			float frameHeight = textureHeight / player_animation->totalRows;
-
-			float spriteCenterX = player_position->x + frameWidth / 2.0f;
-			float spriteCenterY = player_position->y + frameHeight / 2.0f;
-			camera_position->x = spriteCenterX - window->width/2.0f;
-			camera_position->y = spriteCenterY - window->height/2.0f;
-
-			
-
-
-		}
-		void PrepareFrame(double elapsed)
-		{
-			float textureWidth, textureHeight;
-			SDL_GetTextureSize(player_sprite->texture, &textureWidth, &textureHeight);
-
-			float frameWidth = textureWidth / player_animation->maxFrames;
-			float frameHeight = textureHeight / player_animation->totalRows;
-
-			float spriteCenterX = player_position->x + frameWidth / 2.0f;
-			float spriteCenterY = player_position->y + frameHeight / 2.0f;
-			camera_position->x = spriteCenterX - window->width / 2.0f;
-			camera_position->y = spriteCenterY - window->height / 2.0f;
-		}
 
 		void CreateClouds(int howMany)
 		{
@@ -1683,7 +1724,7 @@ int main()
 
 
 		// remove this later
-		ECS::System::DrawColliders(game.camera_position->x, game.camera_position->y);
+		//ECS::System::DrawColliders(game.camera_position->x, game.camera_position->y);
 
 		SDL_RenderPresent(window.GetRenderer());
 
