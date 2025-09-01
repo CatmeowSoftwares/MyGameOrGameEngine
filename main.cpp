@@ -1295,7 +1295,7 @@ public:
 			//CreateTiles(10, 0, 250);
 
 
-			//buttonId = CreateButtonWithLabel("Meow", 100, 100, 200, 100, 255 / 2, 255 / 2, 255 / 2);
+			buttonId = CreateButtonWithLabel("Meow", 100, 100, 200, 100, 255 / 2, 255 / 2, 255 / 2);
 
 			//range = CreateRange(10.0f, 300, 300, 0, 0, 0, 255);
 			//range_position = Entity::GetComponent<Component::Position>(range);
