@@ -391,15 +391,7 @@ public:
 			}
 
 		};
-		struct TileMap
-		{
-			std::vector<std::vector<int>> cells;
-
-		};
-		struct Tile
-		{
-			// id
-		};
+		
 	};
 
 	class System
@@ -1174,8 +1166,7 @@ public:
 			std::unordered_map<int, Component::Label>& labels = Components<Component::Label>::GetStorage();
 			std::unordered_map<int, Component::Range>& ranges = Components<Component::Range>::GetStorage();
 			std::unordered_map<int, Component::Audio>& audio = Components<Component::Audio>::GetStorage();
-			std::unordered_map<int, Component::TileMap>& tilemMaps = Components<Component::TileMap>::GetStorage();
-			std::unordered_map<int, Component::Tile>& tiles = Components<Component::Tile>::GetStorage();
+
 
 
 			positions.erase(entity);
@@ -1192,8 +1183,7 @@ public:
 			labels.erase(entity);
 			ranges.erase(entity);
 			audio.erase(entity);
-			tilemMaps.erase(entity);
-			tiles.erase(entity);
+
 		}
 
 
