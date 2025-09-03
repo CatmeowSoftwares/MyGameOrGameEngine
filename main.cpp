@@ -438,6 +438,9 @@ public:
 
 
 
+
+
+			// Get the Component storage
 			// const = read only
 			const std::unordered_map<int, Component::Sprite>& sprites = Components<Component::Sprite>::GetStorage();
 			const std::unordered_map<int, Component::Position>& positions = Components<Component::Position>::GetStorage();
