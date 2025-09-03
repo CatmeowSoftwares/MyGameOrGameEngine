@@ -102,7 +102,7 @@ public:
 		return height;
 	}
 
-	static void Draw(SDL_Texture* texture, int x, int y, double angle = 0.0, const SDL_FPoint* center = nullptr, SDL_FRect* srcRect = nullptr, SDL_FRect* dstRect = nullptr, SDL_FlipMode flipMode = SDL_FLIP_NONE)
+	static void Render(SDL_Texture* texture, int x, int y, double angle = 0.0, const SDL_FPoint* center = nullptr, SDL_FRect* srcRect = nullptr, SDL_FRect* dstRect = nullptr, SDL_FlipMode flipMode = SDL_FLIP_NONE)
 	{
 		SDL_RenderTextureRotated(renderer, texture, srcRect, dstRect, angle, center, flipMode);
 	}
@@ -429,16 +429,30 @@ public:
 			*/
 
 		}
-		static void Draw(int camX = 0, int camY = 0, int camW = 0, int camH = 0)
+		static void Render(int camX = 0, int camY = 0, int camW = 0, int camH = 0)
 		{
 
+
+
+
+
+
+
+			// const = read only
 			const std::unordered_map<int, Component::Sprite>& sprites = Components<Component::Sprite>::GetStorage();
 			const std::unordered_map<int, Component::Position>& positions = Components<Component::Position>::GetStorage();
 			const std::unordered_map<int, Component::Parallax>& parallaxes = Components<Component::Parallax>::GetStorage();
 			const std::unordered_map<int, Component::Animation>& animations = Components<Component::Animation>::GetStorage();
 			const std::unordered_map<int, Component::Rotatable>& rotatables = Components<Component::Rotatable>::GetStorage();
 
+
+
+
+
+
 			
+
+			// Add sprites to sorting sprite container
 			std::vector<std::pair<int, Component::Sprite>> sortedSprites;
 			for (auto& i : sprites)
 			{
@@ -446,16 +460,25 @@ public:
 				sortedSprites.push_back(sprite);
 			}
 
+
+			// Sort Z index
 			std::sort(sortedSprites.begin(), sortedSprites.end(), [](const std::pair<int, Component::Sprite>& a, const std::pair<int, Component::Sprite>& b) {return a.second.z < b.second.z;});
 
 			
+
+
+
+			// Does this to all sprites
 			for (auto& sprite : sortedSprites)
 			{
 
 
-
+				
 				int entity = sprite.first;
 				auto& texture = sprite.second.texture;
+
+
+				// Finds if it contains position
 				auto it = positions.find(entity);
 				int x = 0;
 				int y = 0;
@@ -469,7 +492,10 @@ public:
 
 				float w = sprite.second.w;
 				float h = sprite.second.h;
+				
 
+
+				// Finds if it contains parallax
 				float parallaxX = 1.0f;
 				float parallaxY = 1.0f;
 				bool repeating = false;
@@ -482,7 +508,7 @@ public:
 				}
 
 		
-
+				// Finds the animation
 				float frameWidth = w;
 				float frameHeight = h;
 				auto animation = animations.find(entity);
@@ -521,6 +547,10 @@ public:
 				}
 
 
+
+
+
+				// Hides if outside camera
 				if (
 					(dstRect.x + dstRect.w < 0) ||
 					(dstRect.y + dstRect.h < 0) ||
@@ -530,6 +560,10 @@ public:
 				{
 					continue;
 				}
+
+
+
+				// Finds if it can be rotated or not
 				auto rotatable = rotatables.find(entity);
 				double angel = 0.0;
 				SDL_FPoint* point = nullptr;
@@ -542,7 +576,7 @@ public:
 
 
 
-				
+				// if it contains parallax, make it repeat
 				if (repeating)
 				{
 
@@ -555,15 +589,15 @@ public:
 						dstRect.y = drawY;
 						dstRect.w = w;
 						dstRect.h = h;
-						Window::Draw(texture, 0, 0, 0.0, NULL, &srcRect, &dstRect);
+						Window::Render(texture, 0, 0, 0.0, NULL, &srcRect, &dstRect);
 					}
 					continue;
 				}
 					
 
 				
-			
-				Window::Draw(texture, 0, 0, angel, point, &srcRect, &dstRect);
+				// Renders the texture
+				Window::Render(texture, 0, 0, angel, point, &srcRect, &dstRect);
 				
 		
 
@@ -572,6 +606,14 @@ public:
 
 			}
 		}
+
+
+
+
+
+
+
+
 		static void DrawUI(int camX = 0, int camY = 0, int camW = 0, int camH = 0)
 		{
 
@@ -675,7 +717,7 @@ public:
 					point = rotate.center;
 				}
 
-				Window::Draw(sprite.second.texture, 0, 0, angel, point, &srcRect, &dstRect);
+				Window::Render(sprite.second.texture, 0, 0, angel, point, &srcRect, &dstRect);
 
 			}
 		}
@@ -1280,7 +1322,7 @@ public:
 
 
 
-			CreateFloor(-1000, 128, 2000, 512, 151, 107, 75, 255);
+			CreateFloor(-2000, 128, 4000, 512, 151, 107, 75, 255);
 
 			//CreateTiles(10, 0, 250);
 
@@ -1710,7 +1752,7 @@ int main()
 
 		game.PrepareFrame(elapsed);
 		SDL_RenderClear(window.GetRenderer());
-		ECS::System::Draw(game.camera_position->x, game.camera_position->y, game.window->width, game.window->height);
+		ECS::System::Render(game.camera_position->x, game.camera_position->y, game.window->width, game.window->height);
 
 
 		// remove this later
